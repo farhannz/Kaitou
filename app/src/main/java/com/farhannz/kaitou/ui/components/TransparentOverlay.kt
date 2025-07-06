@@ -1,4 +1,4 @@
-package com.farhannz.kaitou
+package com.farhannz.kaitou.ui.components
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGestures

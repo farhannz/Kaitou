@@ -12,23 +12,13 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.app.NotificationCompat
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleRegistry
-import androidx.lifecycle.ViewModelStore
-import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.setViewTreeLifecycleOwner
-import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.lifecycle.*
 import androidx.savedstate.*
+import com.farhannz.kaitou.ui.components.DraggableOverlayContent
 import com.farhannz.kaitou.ui.components.OCRScreen
 import kotlin.math.roundToInt
 
@@ -108,8 +98,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         layoutParams.x = currentX
         layoutParams.y = currentY
         composeView = createComposeView {
-            DraggableOverlayContent(onCaptureClick = {captureScreenshot()}, onDrag = {
-                    dx, dy ->
+            DraggableOverlayContent(onCaptureClick = { captureScreenshot() }, onDrag = { dx, dy ->
                 currentX -= dx.roundToInt()
                 currentY -= dy.roundToInt()
                 layoutParams.x = currentX
