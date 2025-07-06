@@ -12,6 +12,13 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.*
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.app.NotificationCompat
@@ -22,8 +29,11 @@ import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.*
+import com.farhannz.kaitou.ui.components.OCRScreen
 import kotlin.math.roundToInt
 
+
+typealias ComposableContent = @Composable () -> Unit
 class OverlayService() : Service(), SavedStateRegistryOwner {
     private lateinit var composeView: ComposeView
     private lateinit var windowManager: WindowManager
@@ -34,11 +44,45 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private var currentX = 0
     private var currentY = 100
 
+    private var ocrScreen: ComposeView? = null
+
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
+
+    private fun createComposeView(content: ComposableContent) : ComposeView {
+        return ComposeView(this).apply {
+            setViewTreeLifecycleOwner(this@OverlayService)
+            setViewTreeSavedStateRegistryOwner(this@OverlayService)
+            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
+            setViewTreeViewModelStoreOwner(
+                viewModelStoreOwner = object : ViewModelStoreOwner {
+                    override val viewModelStore: ViewModelStore
+                        get() = ViewModelStore()
+                }
+            )
+            setContent {
+                content()
+            }
+        }
+    }
     private fun captureScreenshot() {
         Log.i("Overlay Service", "Screenshot Taken")
+        ocrScreen = createComposeView {
+            OCRScreen(onClicked = {removeOverlay()})
+        }
+        val layoutParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.TRANSLUCENT
+        )
+        windowManager.addView(ocrScreen,layoutParams)
     }
     override fun onCreate() {
         super.onCreate()
@@ -63,26 +107,15 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         layoutParams.gravity = Gravity.BOTTOM or Gravity.END
         layoutParams.x = currentX
         layoutParams.y = currentY
-        composeView = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(this@OverlayService)
-            setViewTreeSavedStateRegistryOwner(this@OverlayService)
-            setViewCompositionStrategy(ViewCompositionStrategy.DisposeOnDetachedFromWindow)
-            setViewTreeViewModelStoreOwner(
-                viewModelStoreOwner = object : ViewModelStoreOwner {
-                    override val viewModelStore: ViewModelStore
-                        get() = ViewModelStore()
-                }
-            )
-            setContent {
-                DraggableOverlayContent(onCaptureClick = {captureScreenshot()}, onDrag = {
+        composeView = createComposeView {
+            DraggableOverlayContent(onCaptureClick = {captureScreenshot()}, onDrag = {
                     dx, dy ->
-                    currentX -= dx.roundToInt()
-                    currentY -= dy.roundToInt()
-                    layoutParams.x = currentX
-                    layoutParams.y = currentY
-                    windowManager.updateViewLayout(composeView, layoutParams)
-                })
-            }
+                currentX -= dx.roundToInt()
+                currentY -= dy.roundToInt()
+                layoutParams.x = currentX
+                layoutParams.y = currentY
+                windowManager.updateViewLayout(composeView, layoutParams)
+            })
         }
 
 //        overlayView = composeView
@@ -118,7 +151,21 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
     }
 
+
+    private fun removeOverlay() {
+        ocrScreen?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (e: Exception) {
+                Log.e("Overlay", "Failed to remove overlay", e)
+            }
+            ocrScreen = null
+        }
+    }
+
     override fun onBind(intent: Intent?): IBinder? = null
     override val savedStateRegistry: SavedStateRegistry
         get() = savedStateRegistryController.savedStateRegistry
+
 }
+
