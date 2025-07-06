@@ -23,7 +23,7 @@ fun TransparentOverlay(onCaptureClick: () -> Unit) {
     ) {
         FloatingActionButton(
             onClick = onCaptureClick,
-            containerColor = Color.Red,
+            containerColor = Color(0xAA000000),
             contentColor = Color.White,
             modifier = Modifier
                 .offset { IntOffset(offsetX.roundToInt(), offsetY.roundToInt()) }
@@ -51,7 +51,7 @@ fun DraggableOverlayContent(onCaptureClick: () -> Unit, onDrag: (Float, Float) -
     // updating the WindowManager.
     FloatingActionButton(
         onClick = onCaptureClick,
-        containerColor = Color.Red,
+        containerColor = Color(0xAA000000),
         contentColor = Color.White,
         modifier = Modifier
             .size(60.dp) // Give it a specific size

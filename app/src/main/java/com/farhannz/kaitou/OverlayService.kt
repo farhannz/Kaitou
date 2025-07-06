@@ -13,6 +13,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.app.NotificationCompat
@@ -20,6 +21,7 @@ import androidx.lifecycle.*
 import androidx.savedstate.*
 import com.farhannz.kaitou.ui.components.DraggableOverlayContent
 import com.farhannz.kaitou.ui.components.OCRScreen
+import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
 

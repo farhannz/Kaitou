@@ -18,19 +18,7 @@ import androidx.compose.ui.tooling.preview.PreviewParameter
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.farhannz.kaitou.data.models.*
-
-
-data class BoundingBox (
-    val x1: Float,
-    val y1: Float,
-    val x2: Float,
-    val y2: Float
-)
-
-data class OCRResult(
-    val word: String,
-    val bbox : BoundingBox
-)
+import kotlinx.coroutines.delay
 
 @Composable
 fun BoundingBoxOverlay(data: OCRResult, onClicked: () -> Unit) {
@@ -55,7 +43,7 @@ fun BoundingBoxOverlay(data: OCRResult, onClicked: () -> Unit) {
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun OCRScreen(onClicked : () -> Unit) {
-
+    var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.Loading) }
     var selectedResult by remember { mutableStateOf<OCRResult?>(null) }
 
     var results = arrayListOf<OCRResult>(
@@ -63,24 +51,44 @@ fun OCRScreen(onClicked : () -> Unit) {
         OCRResult("日本語", BoundingBox(20f, 300f, 70f, 330f))
     )
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xAA000000)) // semi-transparent
-            .clickable {
-                onClicked()
-            }
-    ) {
-        Text(text="Test", color = Color.Red)
-        for (res in results) {
-            BoundingBoxOverlay(res, onClicked = {
-                selectedResult = res
-            })
-        }
-        selectedResult?.let(
-            { PopUpDict() }
-        )
+    LaunchedEffect(Unit) {
+//        val results = runOCRAsync(screenshotBitmap)
+        delay(5000)
+        ocrState = OCRUIState.Done(results)
     }
+
+    when (val state = ocrState) {
+        is OCRUIState.Loading -> {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color(0x88000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator()
+            }
+        }
+
+        is OCRUIState.Done -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0xAA000000)) // semi-transparent
+                    .clickable {
+                        onClicked()
+                    }
+            ) {
+                Text(text="Test", color = Color.Red)
+                for (res in results) {
+                    BoundingBoxOverlay(res, onClicked = {
+                        selectedResult = res
+                    })
+                }
+                selectedResult?.let(
+                    { PopUpDict() }
+                )
+            }
+        }
+    }
+
 
 
 //    Scaffold(modifier = Modifier.fillMaxSize().background(Color.Transparent)) {
