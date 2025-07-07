@@ -8,6 +8,9 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import com.farhannz.kaitou.bridges.OCRBridge.initMecab
+import com.farhannz.kaitou.bridges.OCRBridge.initPaddle
+import com.farhannz.kaitou.bridges.OCRBridge.prepareInitModel
 
 class MainActivity : ComponentActivity() {
     private val overlayPermissionLauncher = registerForActivityResult(
@@ -38,5 +41,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         requestOverlayPermission()
         moveTaskToBack(true)
+        prepareInitModel(application)
     }
 }

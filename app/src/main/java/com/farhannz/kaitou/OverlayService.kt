@@ -21,6 +21,7 @@ import androidx.lifecycle.*
 import androidx.savedstate.*
 import com.farhannz.kaitou.ui.components.DraggableOverlayContent
 import com.farhannz.kaitou.ui.components.OCRScreen
+//import com.farhannz.kaitou.ui.viewmodels.SudachiTokenizer
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -38,6 +39,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     private var ocrScreen: ComposeView? = null
 
+//    private lateinit var sudachiTokenizer: SudachiTokenizer
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -60,6 +62,10 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     }
     private fun captureScreenshot() {
         Log.i("Overlay Service", "Screenshot Taken")
+//        sudachiTokenizer = SudachiTokenizer(this.application)
+//        ocrScreen = createComposeView {
+//            OCRScreen(onClicked = {removeOverlay()}, sudachiTokenizer)
+//        }
         ocrScreen = createComposeView {
             OCRScreen(onClicked = {removeOverlay()})
         }
