@@ -3,6 +3,8 @@
 
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
     <application
         android:label="Kaitou"
         android:theme="@style/Theme.Material3.DayNight.NoActionBar">
@@ -14,7 +16,16 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <service android:name=".OverlayService" android:exported="false"/>
+        <activity
+                android:name=".helpers.ScreenshotPermissionActivity"
+                android:theme="@android:style/Theme.Translucent.NoTitleBar"
+                android:exported="false"
+                android:excludeFromRecents="true"
+                android:noHistory="true"
+        />
+
+        <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse"/>
+        <service android:name=".ScreenshotService" android:exported="false" android:foregroundServiceType="mediaProjection"/>
 
     </application>
 </manifest>

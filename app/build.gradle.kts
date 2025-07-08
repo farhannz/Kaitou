@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    kotlin("plugin.serialization")
 }
 
 android {
@@ -10,12 +11,9 @@ android {
 
     defaultConfig {
         applicationId = "com.farhannz.kaitou"
-        minSdk = 28
-        //noinspection ExpiredTargetSdkVersion
-        targetSdk = 28
         versionCode = 1
         versionName = "1.0"
-
+        minSdk = 31
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
     buildFeatures {
@@ -62,11 +60,11 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
-
+    implementation("dev.shreyaspatil:capturable:2.1.0")
     val composeBom = platform("androidx.compose:compose-bom:2025.05.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
-
+    implementation("androidx.graphics:graphics-shapes:1.0.1")
     // Choose one of the following:
     // Material Design 3
     implementation("androidx.compose.material3:material3")
@@ -85,9 +83,9 @@ dependencies {
     // UI Tests
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
 //    implementation("com.worksap.nlp:sudachi:0.7.5")
-
+    implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.apache.lucene:lucene-analyzers-kuromoji:8.11.0")
 
     // Optional - Included automatically by material, only add when you need
