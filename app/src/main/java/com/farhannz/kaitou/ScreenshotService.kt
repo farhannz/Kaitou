@@ -64,8 +64,8 @@ class ScreenshotServiceRework : Service () {
 
     val LOG_TAG = this::class.simpleName;
     private val logger = Logger(LOG_TAG!!)
-    private var rc : Int = Int.MIN_VALUE
-    private var dataIntent:Intent? = null
+    var rc : Int = Int.MIN_VALUE
+    var dataIntent:Intent? = null
     private val binder = LocalBinder()
 
     private var mediaProjectionManager: MediaProjectionManager? = null
@@ -90,7 +90,9 @@ class ScreenshotServiceRework : Service () {
         Log.i(LOG_TAG, "Received Request")
         when (intent?.action) {
             "CAPTURE_SCREENSHOT" -> {
-                logger.INFO("Screenshot Captured")
+//                Empty Only for binding intent
+//                logger.INFO("Screenshot Captured")
+//                requestCapture()
             }
             "START_SERVICE" -> {
                 val captured = mapOf(
@@ -100,7 +102,22 @@ class ScreenshotServiceRework : Service () {
                 if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
                     rc = captured["resultCode"] as Int
                     dataIntent = captured["data"] as Intent
+                    mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(rc, dataIntent!!)
                     logger.DEBUG("MediaProjection Permission Granted")
+                    val metrics = resources.displayMetrics
+                    val width = metrics.widthPixels
+                    val height = metrics.heightPixels
+                    val density = metrics.densityDpi
+                    virtualDisplay = mediaProjection?.createVirtualDisplay(
+                        "SingleShot",
+                        width,
+                        height,
+                        density,
+                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                        imageReader?.surface,
+                        null,
+                        null
+                    )
                 }
             }
         }
@@ -109,57 +126,45 @@ class ScreenshotServiceRework : Service () {
 
     fun prepareScreenshot() {
         logger.DEBUG("rc = $rc, dataIntent = $dataIntent")
-        mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(rc, dataIntent!!)
         val metrics = resources.displayMetrics
         val width = metrics.widthPixels
         val height = metrics.heightPixels
         val density = metrics.densityDpi
-        imageReader = ImageReader.newInstance(width,height, PixelFormat.RGBA_8888, 2)
-        virtualDisplay = mediaProjection?.createVirtualDisplay(
-            "ScreenCapture",
-            width,
-            height,
-            density,
-            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-            imageReader?.surface,
-            null,
-            null
-        )
+        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        virtualDisplay?.surface = imageReader?.surface
+        var captured = false
+        val handler = Handler(Looper.getMainLooper())
         imageReader?.setOnImageAvailableListener({ reader ->
+            if (captured) return@setOnImageAvailableListener
+            captured = true
+
             try {
                 val image = reader.acquireLatestImage()
                 if (image == null) {
                     logger.WARNING("Image is null")
                     return@setOnImageAvailableListener
                 }
-                try {
-                    val bitmap = image.toBitmap()
-                    onScreenshotTaken?.invoke(bitmap)
-                } catch (error: Throwable) {
-                    logger.ERROR(error.message!!)
-                }
-                finally {
-                    image.close()
-                }
-            } catch (error: Throwable) {
-                logger.ERROR(error.message!!)
+
+                val bitmap = image.toBitmap()
+                image.close()
+                onScreenshotTaken?.invoke(bitmap)
+
+            } catch (e: Throwable) {
+                logger.ERROR(e.message!!)
             } finally {
-                virtualDisplay?.release()
                 imageReader?.close()
-                mediaProjection?.stop()
-                virtualDisplay = null
-                imageReader = null
+                virtualDisplay?.surface = null
+//                virtualDisplay?.release()
+//                mediaProjection?.stop()
             }
-        }, Handler(Looper.getMainLooper()))
+        }, handler)
+
     }
 
     fun requestCapture() {
         logger.DEBUG("Captured")
         logger.DEBUG("$rc - $dataIntent")
-        Handler(Looper.getMainLooper()).postDelayed({
-            prepareScreenshot()
-        }, 200)
-//        onScreenshotTaken?.invoke(createBitmap(100, 100))
+        prepareScreenshot()
     }
 
     override fun onCreate() {
@@ -181,6 +186,12 @@ class ScreenshotServiceRework : Service () {
             .setSmallIcon(R.drawable.ic_menu_view)
             .build()
         startForeground(1991, notification)
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        virtualDisplay?.release()
+        mediaProjection?.stop()
     }
 }
 

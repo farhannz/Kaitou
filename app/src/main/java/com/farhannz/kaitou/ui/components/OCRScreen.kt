@@ -21,14 +21,17 @@ import androidx.compose.ui.*
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.coroutines.delay
@@ -268,8 +271,9 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalComposeApi::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
-fun OCRScreen(onClicked: () -> Unit) {
+fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
 
+    val context = LocalContext.current
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
 
     // Mock data for demonstration
@@ -387,5 +391,5 @@ fun OCRScreen(onClicked: () -> Unit) {
 fun PreviewOCRScreen() {
 //    var sudachiTokenizer : SudachiTokenizer = viewModel()
 //    OCRScreen(onClicked = {}, sudachiTokenizer)
-    OCRScreen(onClicked = {})
+    OCRScreen(onClicked = {}, inputImage = createBitmap(100,100))
 }

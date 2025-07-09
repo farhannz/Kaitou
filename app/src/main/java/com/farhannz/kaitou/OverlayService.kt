@@ -33,6 +33,7 @@ import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ExperimentalComposeApi
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -52,6 +53,7 @@ import com.farhannz.kaitou.ui.components.OCRScreen
 import dev.shreyaspatil.capturable.capturable
 import dev.shreyaspatil.capturable.controller.CaptureController
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
+import kotlinx.coroutines.CoroutineScope
 //import com.farhannz.kaitou.ui.viewmodels.SudachiTokenizer
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
@@ -83,72 +85,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         get() = lifecycleRegistry
 
 
-//    private val permissionResultReceiver = object : BroadcastReceiver() {
-//        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-//        override fun onReceive(context: Context, intent: Intent) {
-//            val resultCode = intent.getIntExtra("resultCode", -1)
-//            val data = intent.getParcelableExtra("data", Intent::class.java)
-//            handleCaptureResult(resultCode, data)
-//        }
-//
-//        private fun handleCaptureResult(resultCode: Int, data: Intent?) {
-//            screenshotServiceBinder?.registerCallback(object : ScreenshotService.ScreenshotCallback {
-//                override fun onCaptureComplete(bitmap: ImageBitmap) {
-//                    Log.i("OverlayService", "Screenshot Captured ${bitmap.width}x${bitmap.height}")
-//                    showOCRScreen()
-//                }
-//                override fun onCaptureFailed(error: String) {
-//                    Toast.makeText(this@OverlayService, error, Toast.LENGTH_SHORT).show()
-//                }
-//            }) ?: run {
-//                Toast.makeText(this@OverlayService, "Capture service not ready", Toast.LENGTH_SHORT).show()
-//            }
-//            screenshotServiceBinder?.captureScreen(resultCode,data)
-//        }
-//    }
-//    private val connection = object : ServiceConnection {
-//        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-//        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-//            isBound = true
-//            Log.d("OverlayService", "Connected to ScreenshotService")
-//            screenshotServiceBinder = service as ScreenshotService.ScreenshotServiceBinder
-//            if (pendingCaptureRequest) {
-//                executeCapture()
-//            }
-//        }
-//        override fun onServiceDisconnected(p0: ComponentName?) {
-//            isBound = false
-//            Log.i("OverlayService", "Disconnected from ScreenshotService")
-//            screenshotServiceBinder = null
-//        }
-//    }
-
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun executeCapture() {
-//        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-//        val permissionIntent = mediaProjectionManager.createScreenCaptureIntent()
-//        permissionIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-//        startActivity(permissionIntent)
-
-//        registerReceiver(permissionResultReceiver, IntentFilter("CAPTURE_RESULT"), RECEIVER_NOT_EXPORTED)
-//        val intent = Intent(this, ScreenshotPermissionActivity::class.java).apply {
-//            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-//        }
-//        startActivity(intent)
-    }
-
-//    private fun bindToCaptureService() {
-//        try {
-//            val intent = Intent(this, ScreenshotService::class.java)
-//            bindService(intent, connection, Context.BIND_AUTO_CREATE)
-//        } catch (e: Exception) {
-//            Log.e("OverlayService", "Binding failed: ${e.message}")
-//            pendingCaptureRequest = false
-//            Toast.makeText(this, "Failed to connect capture service", Toast.LENGTH_SHORT).show()
-//        }
-//    }
-
-
     private val connection = object : ServiceConnection {
 
         override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
@@ -160,10 +96,11 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
                 // Handle the captured screenshot
                 logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
                 // Do OCR or show it
-                showOCRScreen()
+                showOCRScreen(bitmap)
             }
-
-            // Trigger screenshot
+//            // Trigger screenshot
+            screenshotService.rc = MainActivity.MediaProjectionPermissionStore.resultCode
+            screenshotService.dataIntent = MainActivity.MediaProjectionPermissionStore.dataIntent
             screenshotService.requestCapture()
         }
 
@@ -190,10 +127,12 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         }
     }
 
-    private fun showOCRScreen() {
+    private fun showOCRScreen(image: Bitmap) {
         ocrScreen = createComposeView {
             OCRScreen(onClicked = {
-                removeOverlay()}
+                    removeOverlay()
+                },
+                inputImage = image
             )
         }
         val layoutParams = WindowManager.LayoutParams(
@@ -215,32 +154,13 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             unbindService(connection)
         }
         logger.INFO("Requesting screenshot capture")
+        logger.DEBUG("${MainActivity.MediaProjectionPermissionStore.resultCode} - ${MainActivity.MediaProjectionPermissionStore.dataIntent}")
         val intent = Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
             it.action = "CAPTURE_SCREENSHOT"
+            it.putExtra("resultCode", MainActivity.MediaProjectionPermissionStore.resultCode)
+            it.putExtra("data", MainActivity.MediaProjectionPermissionStore.dataIntent)
         }
         bindService(intent,connection, BIND_AUTO_CREATE)
-
-
-//        Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
-//            it.action = "CAPTURE_SCREENSHOT"
-//            startService(it)
-//            showOCRScreen()
-//        }
-
-//        sudachiTokenizer = SudachiTokenizer(this.application)
-//        ocrScreen = createComposeView {
-//            OCRScreen(onClicked = {removeOverlay()}, sudachiTokenizer)
-//        }
-//        if (isBound) {
-////            executeCapture()
-//            val intent = Intent(this, ScreenshotPermissionActivity::class.java).apply {
-//                flags = Intent.FLAG_ACTIVITY_NEW_TASK
-//            }
-//            startActivity(intent)
-//        } else {
-//            pendingCaptureRequest = true
-//            bindToCaptureService()
-//        }
     }
 
     override fun onCreate() {
@@ -291,11 +211,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         const val OVERLAY_NOTIFICATION_ID = 1770
     }
     private fun startForegroundServiceWithNotification() {
-//        val channelId = "com.farhannz.kaitou.overlay_channel"
-//        val channel = NotificationChannel(channelId, "Overlay", NotificationManager.IMPORTANCE_LOW)
-//        val manager = getSystemService(NotificationManager::class.java)
-//        manager.createNotificationChannel(channel)
-
         NotificationHelper.createNotificationChannels(this)
 
         val notification = NotificationCompat.Builder(this, NotificationHelper.OVERLAY_CHANNEL_ID)
@@ -316,13 +231,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         if (::composeView.isInitialized) {
             windowManager.removeView(composeView)
         }
-//        if (isBound) {
-//            try {
-//                unbindService(connection)
-//            } catch (e: IllegalArgumentException) {
-//                Log.e("OverlayService", "Service was not registered: ${e.message}")
-//            }
-//        }
         unbindService(connection)
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
     }

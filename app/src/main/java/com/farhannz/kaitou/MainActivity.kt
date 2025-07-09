@@ -24,6 +24,11 @@ class MainActivity : ComponentActivity() {
     private val LOG_TAG = MainActivity::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private lateinit var mediaProjectionManager : MediaProjectionManager
+
+    object MediaProjectionPermissionStore {
+        var resultCode: Int = Int.MIN_VALUE
+        var dataIntent: Intent? = null
+    }
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
@@ -94,9 +99,11 @@ class MainActivity : ComponentActivity() {
                 action = "START_SERVICE"
                 putExtra("resultCode", result.resultCode)
                 putExtra("data", result.data)
+                MediaProjectionPermissionStore.dataIntent = result.data
+                MediaProjectionPermissionStore.resultCode = result.resultCode
+                requestOverlayPermission()
             }
             ContextCompat.startForegroundService(this, intent)
-            requestOverlayPermission()
         } else {
             // Permission denied
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
