@@ -107,10 +107,59 @@ class ScreenshotServiceRework : Service () {
         return START_STICKY
     }
 
+    fun prepareScreenshot() {
+        logger.DEBUG("rc = $rc, dataIntent = $dataIntent")
+        mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(rc, dataIntent!!)
+        val metrics = resources.displayMetrics
+        val width = metrics.widthPixels
+        val height = metrics.heightPixels
+        val density = metrics.densityDpi
+        imageReader = ImageReader.newInstance(width,height, PixelFormat.RGBA_8888, 2)
+        virtualDisplay = mediaProjection?.createVirtualDisplay(
+            "ScreenCapture",
+            width,
+            height,
+            density,
+            DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+            imageReader?.surface,
+            null,
+            null
+        )
+        imageReader?.setOnImageAvailableListener({ reader ->
+            try {
+                val image = reader.acquireLatestImage()
+                if (image == null) {
+                    logger.WARNING("Image is null")
+                    return@setOnImageAvailableListener
+                }
+                try {
+                    val bitmap = image.toBitmap()
+                    onScreenshotTaken?.invoke(bitmap)
+                } catch (error: Throwable) {
+                    logger.ERROR(error.message!!)
+                }
+                finally {
+                    image.close()
+                }
+            } catch (error: Throwable) {
+                logger.ERROR(error.message!!)
+            } finally {
+                virtualDisplay?.release()
+                imageReader?.close()
+                mediaProjection?.stop()
+                virtualDisplay = null
+                imageReader = null
+            }
+        }, Handler(Looper.getMainLooper()))
+    }
+
     fun requestCapture() {
         logger.DEBUG("Captured")
         logger.DEBUG("$rc - $dataIntent")
-        onScreenshotTaken?.invoke(createBitmap(100, 100))
+        Handler(Looper.getMainLooper()).postDelayed({
+            prepareScreenshot()
+        }, 200)
+//        onScreenshotTaken?.invoke(createBitmap(100, 100))
     }
 
     override fun onCreate() {
@@ -122,6 +171,8 @@ class ScreenshotServiceRework : Service () {
         ).apply {
             description = "Handles screen captures"
         }
+
+//        Creating notification channel
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(captureChannel)
         val notification = NotificationCompat.Builder(this, "ScreenshotRework")

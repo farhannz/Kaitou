@@ -44,6 +44,7 @@ import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.*
 import androidx.savedstate.*
+import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
 import com.farhannz.kaitou.helpers.ScreenshotPermissionActivity
 import com.farhannz.kaitou.ui.components.DraggableOverlayContent
@@ -60,7 +61,8 @@ typealias ComposableContent = @Composable () -> Unit
 class OverlayService() : Service(), SavedStateRegistryOwner {
     private lateinit var composeView: ComposeView
     private lateinit var windowManager: WindowManager
-
+    private val LOG_TAG  = OverlayService::class.simpleName
+    private val logger = Logger(LOG_TAG!!)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     private val lifecycleRegistry = LifecycleRegistry(this)
     private var isBound = false
@@ -156,7 +158,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             // Register callback
             screenshotService.onScreenshotTaken = { bitmap ->
                 // Handle the captured screenshot
-                Log.d("OverlayService", "Screenshot received! ${bitmap.width}x${bitmap.height}")
+                logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
                 // Do OCR or show it
                 showOCRScreen()
             }
@@ -212,7 +214,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         if (isBound) {
             unbindService(connection)
         }
-        Log.i("Overlay Service", "Screenshot Taken")
+        logger.INFO("Requesting screenshot capture")
         val intent = Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
             it.action = "CAPTURE_SCREENSHOT"
         }
@@ -278,9 +280,9 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 //        overlayView = composeView
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         windowManager.addView(composeView, layoutParams)
-        composeView.viewTreeObserver.addOnGlobalLayoutListener {
-            Log.d("OverlayService", "Post-layout size: width=${composeView.width}, height=${composeView.height}")
-        }
+//        composeView.viewTreeObserver.addOnGlobalLayoutListener {
+//            Log.d("OverlayService", "Post-layout size: width=${composeView.width}, height=${composeView.height}")
+//        }
 
     }
 
@@ -302,9 +304,11 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             .setSmallIcon(R.drawable.ic_menu_view)
             .build()
 
-        Log.i("Overlay Service","Staring service....")
+//        Log.i("Overlay Service","Staring service....")
+        logger.INFO("Staring service...")
         startForeground(OVERLAY_NOTIFICATION_ID, notification)
-        Log.i("Overlay Service","Overlay service started....")
+        logger.INFO("Service started!")
+//        Log.i("Overlay Service","Overlay service started....")
     }
 
     override fun onDestroy() {
@@ -329,7 +333,8 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             try {
                 windowManager.removeView(it)
             } catch (e: Exception) {
-                Log.e("Overlay", "Failed to remove overlay", e)
+                logger.ERROR("Failed to remove overlay")
+//                Log.e("Overlay", "Failed to remove overlay", e)
             }
             ocrScreen = null
         }

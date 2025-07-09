@@ -14,4 +14,8 @@ class Logger (tag : String){
     fun INFO(msg : String) {
         Log.i(LOG_TAG, msg)
     }
+
+    fun WARNING(msg: String) {
+        Log.w(LOG_TAG,msg)
+    }
 }

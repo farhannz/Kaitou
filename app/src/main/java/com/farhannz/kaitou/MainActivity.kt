@@ -97,6 +97,9 @@ class MainActivity : ComponentActivity() {
             }
             ContextCompat.startForegroundService(this, intent)
             requestOverlayPermission()
+        } else {
+            // Permission denied
+            Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
         }
 }
     private fun requestScreenShotPermission() {
