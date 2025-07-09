@@ -203,7 +203,7 @@ fun PolygonOverlay(
         }
         drawPath(
             path = path,
-            color = Color.Red.copy(alpha = 0.3f),
+            color = Color.Red.copy(alpha = 0.1f),
             style = Fill
         )
         drawPath(
@@ -228,6 +228,10 @@ fun WordPolygonsOverlay(
                 points = poly,
                 onClicked = {
                     Log.d("Overlay", "Clicked: $word")
+                    val tokens = tokenizeWithPOS(word)
+                    for (token in tokens) {
+                        Log.i("Overlay", "${token.surface} - ${token.baseForm}")
+                    }
                     // Do something with the word
                 }
             )

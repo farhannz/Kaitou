@@ -25,7 +25,7 @@
         />
 
         <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse"/>
-        <service android:name=".ScreenshotService" android:exported="false" android:foregroundServiceType="mediaProjection"/>
+        <service android:name=".ScreenshotServiceRework" android:exported="false" android:foregroundServiceType="mediaProjection"/>
 
     </application>
 </manifest>

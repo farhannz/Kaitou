@@ -1,14 +1,15 @@
 package com.farhannz.kaitou
 
 import android.R
-import android.app.Activity.RESULT_OK
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.ComponentName
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.graphics.Bitmap
 //import android.graphics.Color
@@ -17,6 +18,7 @@ import android.hardware.display.*
 import android.media.ImageReader
 import android.media.projection.*
 import android.os.Binder
+import android.os.Build
 import android.os.Environment
 import android.os.Handler
 import android.os.IBinder
@@ -27,6 +29,7 @@ import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
 import android.widget.Toast
+import androidx.annotation.RequiresApi
 import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ExperimentalComposeApi
@@ -66,73 +69,105 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
 
+
     private var currentX = 0
     private var currentY = 100
     private var ocrScreen: ComposeView? = null
+
 
 //    private lateinit var sudachiTokenizer: SudachiTokenizer
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            isBound = true
-            Log.d("OverlayService", "Connected to ScreenshotService")
-            screenshotServiceBinder = service as ScreenshotService.ScreenshotServiceBinder
-            if (pendingCaptureRequest) {
-                executeCapture()
-            }
-        }
-        override fun onServiceDisconnected(p0: ComponentName?) {
-            isBound = false
-            Log.i("OverlayService", "Disconnected from ScreenshotService")
-            screenshotServiceBinder = null
-        }
-    }
 
+
+//    private val permissionResultReceiver = object : BroadcastReceiver() {
+//        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+//        override fun onReceive(context: Context, intent: Intent) {
+//            val resultCode = intent.getIntExtra("resultCode", -1)
+//            val data = intent.getParcelableExtra("data", Intent::class.java)
+//            handleCaptureResult(resultCode, data)
+//        }
+//
+//        private fun handleCaptureResult(resultCode: Int, data: Intent?) {
+//            screenshotServiceBinder?.registerCallback(object : ScreenshotService.ScreenshotCallback {
+//                override fun onCaptureComplete(bitmap: ImageBitmap) {
+//                    Log.i("OverlayService", "Screenshot Captured ${bitmap.width}x${bitmap.height}")
+//                    showOCRScreen()
+//                }
+//                override fun onCaptureFailed(error: String) {
+//                    Toast.makeText(this@OverlayService, error, Toast.LENGTH_SHORT).show()
+//                }
+//            }) ?: run {
+//                Toast.makeText(this@OverlayService, "Capture service not ready", Toast.LENGTH_SHORT).show()
+//            }
+//            screenshotServiceBinder?.captureScreen(resultCode,data)
+//        }
+//    }
+//    private val connection = object : ServiceConnection {
+//        @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+//        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+//            isBound = true
+//            Log.d("OverlayService", "Connected to ScreenshotService")
+//            screenshotServiceBinder = service as ScreenshotService.ScreenshotServiceBinder
+//            if (pendingCaptureRequest) {
+//                executeCapture()
+//            }
+//        }
+//        override fun onServiceDisconnected(p0: ComponentName?) {
+//            isBound = false
+//            Log.i("OverlayService", "Disconnected from ScreenshotService")
+//            screenshotServiceBinder = null
+//        }
+//    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun executeCapture() {
-        val permissionIntent = Intent(applicationContext, ScreenshotPermissionActivity::class.java).apply {
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        }
-        try {
-            startActivity(permissionIntent)
-        } catch (e: Exception) {
-            composeView.post {
-                Toast.makeText(this, "Capture failed: ${e.message}", Toast.LENGTH_SHORT).show()
-            }
-        }
+//        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+//        val permissionIntent = mediaProjectionManager.createScreenCaptureIntent()
+//        permissionIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
+//        startActivity(permissionIntent)
+
+//        registerReceiver(permissionResultReceiver, IntentFilter("CAPTURE_RESULT"), RECEIVER_NOT_EXPORTED)
+//        val intent = Intent(this, ScreenshotPermissionActivity::class.java).apply {
+//            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+//        }
+//        startActivity(intent)
     }
 
-    fun handleCaptureResult(resultCode: Int, data: Intent?) {
-        if (resultCode == RESULT_OK && data != null) {
-            screenshotServiceBinder?.registerCallback(object : ScreenshotService.ScreenshotCallback {
-                override fun onCaptureComplete(bitmap: ImageBitmap) {
-                    Log.i("OverlayService", "Screenshot Captured ${bitmap.width}x${bitmap.height}")
-                    showOCRScreen()
-                }
-                override fun onCaptureFailed(error: String) {
-                    Toast.makeText(this@OverlayService, error, Toast.LENGTH_SHORT).show()
-                }
-            }) ?: run {
-                Toast.makeText(this@OverlayService, "Capture service not ready", Toast.LENGTH_SHORT).show()
+//    private fun bindToCaptureService() {
+//        try {
+//            val intent = Intent(this, ScreenshotService::class.java)
+//            bindService(intent, connection, Context.BIND_AUTO_CREATE)
+//        } catch (e: Exception) {
+//            Log.e("OverlayService", "Binding failed: ${e.message}")
+//            pendingCaptureRequest = false
+//            Toast.makeText(this, "Failed to connect capture service", Toast.LENGTH_SHORT).show()
+//        }
+//    }
+
+
+    private val connection = object : ServiceConnection {
+
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as ScreenshotServiceRework.LocalBinder
+            val screenshotService = binder.getService()
+            isBound = true
+            // Register callback
+            screenshotService.onScreenshotTaken = { bitmap ->
+                // Handle the captured screenshot
+                Log.d("OverlayService", "Screenshot received! ${bitmap.width}x${bitmap.height}")
+                // Do OCR or show it
+                showOCRScreen()
             }
-        } else {
-            composeView.post {
-                Toast.makeText(this, "Screen capture denied", Toast.LENGTH_SHORT).show()
-            }
+
+            // Trigger screenshot
+            screenshotService.requestCapture()
         }
-        pendingCaptureRequest = false
-    }
 
-
-    private fun bindToCaptureService() {
-        try {
-            val intent = Intent(this, ScreenshotService::class.java)
-            bindService(intent, connection, Context.BIND_AUTO_CREATE)
-        } catch (e: Exception) {
-            Log.e("OverlayService", "Binding failed: ${e.message}")
-            pendingCaptureRequest = false
-            Toast.makeText(this, "Failed to connect capture service", Toast.LENGTH_SHORT).show()
+        override fun onServiceDisconnected(name: ComponentName?) {
+            isBound = false
+//            screenshotService = null
         }
     }
 
@@ -174,17 +209,37 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         windowManager.addView(ocrScreen,layoutParams)
     }
     private fun captureScreenshot() {
+        if (isBound) {
+            unbindService(connection)
+        }
         Log.i("Overlay Service", "Screenshot Taken")
+
+        val intent = Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
+            it.action = "CAPTURE_SCREENSHOT"
+        }
+        bindService(intent,connection, BIND_AUTO_CREATE)
+
+
+//        Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
+//            it.action = "CAPTURE_SCREENSHOT"
+//            startService(it)
+//            showOCRScreen()
+//        }
+
 //        sudachiTokenizer = SudachiTokenizer(this.application)
 //        ocrScreen = createComposeView {
 //            OCRScreen(onClicked = {removeOverlay()}, sudachiTokenizer)
 //        }
-        if (isBound) {
-            executeCapture()
-        } else {
-            pendingCaptureRequest = true
-            bindToCaptureService()
-        }
+//        if (isBound) {
+////            executeCapture()
+//            val intent = Intent(this, ScreenshotPermissionActivity::class.java).apply {
+//                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+//            }
+//            startActivity(intent)
+//        } else {
+//            pendingCaptureRequest = true
+//            bindToCaptureService()
+//        }
     }
 
     override fun onCreate() {
@@ -194,7 +249,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         startForegroundServiceWithNotification()
 
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+
 
         val layoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
@@ -258,13 +313,14 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         if (::composeView.isInitialized) {
             windowManager.removeView(composeView)
         }
-        if (isBound) {
-            try {
-                unbindService(connection)
-            } catch (e: IllegalArgumentException) {
-                Log.e("OverlayService", "Service was not registered: ${e.message}")
-            }
-        }
+//        if (isBound) {
+//            try {
+//                unbindService(connection)
+//            } catch (e: IllegalArgumentException) {
+//                Log.e("OverlayService", "Service was not registered: ${e.message}")
+//            }
+//        }
+        unbindService(connection)
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
     }
 

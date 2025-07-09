@@ -1,5 +1,6 @@
 package com.farhannz.kaitou
 
+import android.Manifest
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
@@ -10,6 +11,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.annotation.RequiresApi
+import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.farhannz.kaitou.bridges.OCRBridge.prepareInitModel
 import com.farhannz.kaitou.helpers.NotificationHelper
@@ -39,7 +42,13 @@ class MainActivity : ComponentActivity() {
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
         }
     }
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun requestScreenCapturePermission() {
+//        ActivityCompat.requestPermissions(
+//            this@MainActivity,
+//            arrayOf(Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION),
+//            ScreenshotService.MEDIA_PROJECTION_REQUEST_CODE
+//        )
         val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val captureIntent = mediaProjectionManager.createScreenCaptureIntent()
 
@@ -70,12 +79,13 @@ class MainActivity : ComponentActivity() {
         ContextCompat.startForegroundService(this, intent)
     }
 
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NotificationHelper.createNotificationChannels(this)
         enableEdgeToEdge()
         requestOverlayPermission()
-        requestScreenCapturePermission()
+//        requestScreenCapturePermission()
         moveTaskToBack(true)
         prepareInitModel(application)
     }

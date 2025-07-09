@@ -1,6 +1,7 @@
 package com.farhannz.kaitou
 
 import android.R
+import android.app.Activity.RESULT_OK
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,6 +12,7 @@ import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
+import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
@@ -25,18 +27,90 @@ import android.view.WindowManager
 import androidx.annotation.RequiresApi
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.app.NotificationCompat
 import androidx.window.layout.WindowMetrics
 import androidx.core.graphics.createBitmap
 import androidx.core.view.ViewCompat
 import com.farhannz.kaitou.helpers.NotificationHelper
+import com.farhannz.kaitou.helpers.NotificationHelper.CAPTURE_CHANNEL_ID
 import java.nio.ByteBuffer
+
+
+fun Image.toBitmap(): Bitmap {
+    try {
+        val plane = planes[0]
+        val buffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * width
+
+        return createBitmap(width + rowPadding / pixelStride, height).apply {
+            copyPixelsFromBuffer(buffer)
+        }
+    } catch (e: Exception) {
+        throw RuntimeException("Failed to convert image to bitmap", e)
+    }
+}
+
+class ScreenshotServiceRework : Service () {
+
+    val LOG_TAG = this::class.simpleName;
+
+    private val binder = LocalBinder()
+
+    inner class LocalBinder : Binder() {
+        fun getService(): ScreenshotServiceRework = this@ScreenshotServiceRework
+    }
+
+    override fun onBind(intent: Intent?): IBinder {
+        return binder
+    }
+    var onScreenshotTaken: ((Bitmap) -> Unit)? = null
+
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        Log.i(LOG_TAG, "Received Request")
+        when (intent?.action) {
+            "CAPTURE_SCREENSHOT" -> {
+                Log.i(LOG_TAG, "ScreenShot Captured")
+            }
+        }
+        return super.onStartCommand(intent, flags, startId)
+    }
+
+    fun requestCapture() {
+        Log.d(LOG_TAG, "Captured")
+        onScreenshotTaken?.invoke(createBitmap(100, 100))
+    }
+
+    override fun onCreate() {
+        super.onCreate()
+        val captureChannel = NotificationChannel(
+            "ScreenshotRework",
+            "Screen Capture",
+            NotificationManager.IMPORTANCE_LOW
+        ).apply {
+            description = "Handles screen captures"
+        }
+        val manager = getSystemService(NotificationManager::class.java)
+        manager.createNotificationChannel(captureChannel)
+        val notification = NotificationCompat.Builder(this, "ScreenshotRework")
+            .setContentTitle("Kaitou")
+            .setContentText("Screen Capture is running")
+            .setSmallIcon(R.drawable.ic_menu_view)
+            .build()
+        startForeground(1991, notification)
+    }
+}
+
 
 class ScreenshotService : Service() {
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
     private lateinit var mediaProjection: MediaProjection
+
+    private var binder = ScreenshotServiceBinder()
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
     private var density: Int = 0
@@ -44,7 +118,7 @@ class ScreenshotService : Service() {
     private var height: Int = 0
 
     override fun onBind(intent: Intent): IBinder {
-        return ScreenshotServiceBinder()
+        return binder
     }
 
     // Request code for MediaProjection permission
@@ -68,58 +142,63 @@ class ScreenshotService : Service() {
         fun registerCallback(cb: ScreenshotCallback) {
             callback = cb
         }
+        fun getService(): ScreenshotService = this@ScreenshotService
+    }
 
-        fun captureScreen(resultCode: Int, data: Intent) {
-            Log.i("ScreenCaptureService", "Received capture request")
+    fun captureScreen(resultCode: Int, data: Intent?) {
+        try {
             val metrics = resources.displayMetrics
             val width = metrics.widthPixels
             val height = metrics.heightPixels
 
-            Log.i("ScreenCaptureService", "Taking screenshot...")
-            imageReader= ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1).apply {
-                setOnImageAvailableListener(
-                    { reader ->
+            Log.d("ScreenCapture", "${width}x${height}")
+            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1).apply {
+                setOnImageAvailableListener({ reader ->
+                    try {
                         val image = reader.acquireLatestImage()
-                        val width = image.width
-                        val height = image.height
-                        val plane = image.planes[0]
-                        val buffer: ByteBuffer = plane.buffer
+                        if (image == null) {
+                            Log.w("ScreenCapture", "Null image received, retrying...")
+                            callback?.onCaptureFailed("Failed to capture, retrying...")
+                            retryCapture(resultCode, data!!)
+                            return@setOnImageAvailableListener
+                        }
 
-                        val pixelStride = plane.pixelStride  // should be 4 for RGBA_8888
-                        val rowStride = plane.rowStride
-                        val rowPadding = rowStride - pixelStride * width
-                        val bitmap = createBitmap(width + rowPadding / pixelStride, height)
-
-                        bitmap.copyPixelsFromBuffer(buffer)
-                        image.close()
-                        callback?.onCaptureComplete(bitmap.asImageBitmap())
-                        // Immediately clean up
+                        try {
+                            val bitmap = image.toBitmap().asImageBitmap()
+                            callback?.onCaptureComplete(bitmap)
+                        } finally {
+                            image.close()
+                        }
+                    } catch (e: Exception) {
+                        callback?.onCaptureFailed("Image processing failed: ${e.message}")
+                    } finally {
                         tearDownCapture()
-                    }, Handler(Looper.getMainLooper())
-                )
+                    }
+                }, Handler(Looper.getMainLooper()))
             }
-
-            val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-            mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
-            virtualDisplay = mediaProjection.createVirtualDisplay(
-                "TempCapture",
-                width, height, metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader?.surface, null, null
-            )
+        } catch (e: Exception) {
+            callback?.onCaptureFailed("Capture setup failed: ${e.message}")
         }
-        fun getService(): ScreenshotService = this@ScreenshotService
+
+        // Implement your actual capture logic here
+//            takeScreenshot()
     }
 
-//    private fun takeScreenshot() {
-//        Log.i("ScreenCaptureService", "Taking screenshot...")
-//
-//
-//        val dummyBitmap = createBitmap(100, 100).asImageBitmap()
-//        callback?.onCaptureComplete(dummyBitmap)
-//        // Dummy implementation - replace with actual capture code
-//        // In a real implementation, this would use MediaProjection
-//    }
+    private fun retryCapture(resultCode: Int, data: Intent) {
+        Handler(Looper.getMainLooper()).postDelayed({
+            captureScreen(resultCode, data)
+        }, 300) // Retry after 300ms
+    }
+
+    private fun takeScreenshot() {
+        Log.i("ScreenCaptureService", "Taking screenshot...")
+
+
+        val dummyBitmap = createBitmap(100, 100).asImageBitmap()
+        callback?.onCaptureComplete(dummyBitmap)
+        // Dummy implementation - replace with actual capture code
+        // In a real implementation, this would use MediaProjection
+    }
 
 
     override fun onCreate() {
@@ -134,21 +213,48 @@ class ScreenshotService : Service() {
             val resultCode = it.getIntExtra("resultCode", -1)
             val data = it.getParcelableExtra("data", Intent::class.java)
 
-            if (resultCode != -1 && data != null) {
+            if (resultCode == RESULT_OK && data != null) {
                 setupMediaProjection(resultCode, data)
+                captureScreen(resultCode,data)
                 // Dummy capture - just log for now
-                Log.d("ScreenCapture", "Dummy capture initiated")
+
+//                Log.d("ScreenCapture", "Dummy capture initiated")
             }
         }
         return START_STICKY
     }
 
     private fun setupMediaProjection(resultCode: Int, data: Intent) {
-        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        mediaProjection = mediaProjectionManager.getMediaProjection(resultCode, data)
+        try {
+            mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager)
+                .getMediaProjection(resultCode, data)
 
-        // In a real implementation, you would set up ImageReader and VirtualDisplay here
-        // For this minimal version, we're just keeping the reference
+            val metrics = resources.displayMetrics
+            virtualDisplay = mediaProjection.createVirtualDisplay(
+                "ScreenCapture",
+                metrics.widthPixels,
+                metrics.heightPixels,
+                metrics.densityDpi,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface,
+                object : VirtualDisplay.Callback() {
+                    override fun onPaused() {
+                        Log.w("ScreenCapture", "VirtualDisplay paused")
+                    }
+
+                    override fun onResumed() {
+                        Log.w("ScreenCapture", "VirtualDisplay resumed")
+                    }
+
+                    override fun onStopped() {
+                        Log.w("ScreenCapture", "VirtualDisplay stopped")
+                    }
+                },
+                null
+            )
+        } catch (e: Exception) {
+            callback?.onCaptureFailed("Failed to setup projection: ${e.message}")
+        }
     }
 
     private fun createNotification(): Notification {

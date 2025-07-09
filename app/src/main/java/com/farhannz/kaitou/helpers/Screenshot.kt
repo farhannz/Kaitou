@@ -12,22 +12,33 @@ import androidx.appcompat.app.AppCompatActivity
 import com.farhannz.kaitou.OverlayService
 
 class ScreenshotPermissionActivity : ComponentActivity() {
+//    private val permissionLauncher = registerForActivityResult(
+//        ActivityResultContracts.StartActivityForResult()
+//    ) { result ->
+//        val overlayService = getSystemService(NotificationHelper.CAPTURE_CHANNEL_ID) as? OverlayService
+//        if (overlayService != null) {
+////            overlayService.handleCaptureResult(result.resultCode, result.data)
+//        } else {
+//            // Fallback if service isn't available
+//            Toast.makeText(
+//                this,
+//                "Overlay service not running",
+//                Toast.LENGTH_SHORT
+//            ).show()
+//        }
+//        finish()
+//    }
+
     private val permissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
-        val overlayService = getSystemService(NotificationHelper.CAPTURE_CHANNEL_ID) as? OverlayService
-        if (overlayService != null) {
-            overlayService.handleCaptureResult(result.resultCode, result.data)
-        } else {
-            // Fallback if service isn't available
-            Toast.makeText(
-                this,
-                "Overlay service not running",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        sendBroadcast(Intent("CAPTURE_RESULT").apply {
+            putExtra("resultCode", result.resultCode)
+            putExtra("data", result.data)
+        })
         finish()
     }
+
 
     @SuppressLint("ServiceCast")
     override fun onCreate(savedInstanceState: Bundle?) {
