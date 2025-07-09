@@ -21,10 +21,14 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
+import android.provider.MediaStore
 import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowManager
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
@@ -33,6 +37,7 @@ import androidx.core.app.NotificationCompat
 import androidx.window.layout.WindowMetrics
 import androidx.core.graphics.createBitmap
 import androidx.core.view.ViewCompat
+import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
 import com.farhannz.kaitou.helpers.NotificationHelper.CAPTURE_CHANNEL_ID
 import java.nio.ByteBuffer
@@ -56,9 +61,20 @@ fun Image.toBitmap(): Bitmap {
 
 class ScreenshotServiceRework : Service () {
 
-    val LOG_TAG = this::class.simpleName;
 
+    val LOG_TAG = this::class.simpleName;
+    private val logger = Logger(LOG_TAG!!)
+    private var rc : Int = Int.MIN_VALUE
+    private var dataIntent:Intent? = null
     private val binder = LocalBinder()
+
+    private var mediaProjectionManager: MediaProjectionManager? = null
+    private var mediaProjection : MediaProjection? = null
+    private var imageReader : ImageReader? = null
+    private var virtualDisplay: VirtualDisplay? = null
+
+//    Callback
+    var onScreenshotTaken: ((Bitmap) -> Unit)? = null
 
     inner class LocalBinder : Binder() {
         fun getService(): ScreenshotServiceRework = this@ScreenshotServiceRework
@@ -67,20 +83,33 @@ class ScreenshotServiceRework : Service () {
     override fun onBind(intent: Intent?): IBinder {
         return binder
     }
-    var onScreenshotTaken: ((Bitmap) -> Unit)? = null
 
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         Log.i(LOG_TAG, "Received Request")
         when (intent?.action) {
             "CAPTURE_SCREENSHOT" -> {
-                Log.i(LOG_TAG, "ScreenShot Captured")
+                logger.INFO("Screenshot Captured")
+            }
+            "START_SERVICE" -> {
+                val captured = mapOf(
+                    "resultCode" to intent.getIntExtra("resultCode", Int.MIN_VALUE),
+                    "data" to intent.getParcelableExtra("data", Intent::class.java)
+                )
+                if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
+                    rc = captured["resultCode"] as Int
+                    dataIntent = captured["data"] as Intent
+                    logger.DEBUG("MediaProjection Permission Granted")
+                }
             }
         }
-        return super.onStartCommand(intent, flags, startId)
+        return START_STICKY
     }
 
     fun requestCapture() {
-        Log.d(LOG_TAG, "Captured")
+        logger.DEBUG("Captured")
+        logger.DEBUG("$rc - $dataIntent")
         onScreenshotTaken?.invoke(createBitmap(100, 100))
     }
 

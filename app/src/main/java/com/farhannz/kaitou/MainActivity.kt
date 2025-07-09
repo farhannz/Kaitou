@@ -15,11 +15,14 @@ import androidx.annotation.RequiresApi
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import com.farhannz.kaitou.bridges.OCRBridge.prepareInitModel
+import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
 
 
 class MainActivity : ComponentActivity() {
 
+    private val LOG_TAG = MainActivity::class.simpleName
+    private val logger = Logger(LOG_TAG!!)
     private lateinit var mediaProjectionManager : MediaProjectionManager
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -80,12 +83,35 @@ class MainActivity : ComponentActivity() {
     }
 
 
+//    This is for the reworked version of ScreenshotService
+//    Requesting Permission with the intent of Starting Service
+//    and caching the permission result via putExtra
+    private val screenshotPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()) { result ->
+        if (result.resultCode == RESULT_OK && result.data != null) {
+            logger.DEBUG("${result.resultCode} - ${result.data}")
+            val intent = Intent(this, ScreenshotServiceRework::class.java).apply {
+                action = "START_SERVICE"
+                putExtra("resultCode", result.resultCode)
+                putExtra("data", result.data)
+            }
+            ContextCompat.startForegroundService(this, intent)
+            requestOverlayPermission()
+        }
+}
+    private fun requestScreenShotPermission() {
+        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
+        val intent = mediaProjectionManager.createScreenCaptureIntent()
+        screenshotPermissionLauncher.launch(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        NotificationHelper.createNotificationChannels(this)
         enableEdgeToEdge()
-        requestOverlayPermission()
+//        NotificationHelper.createNotificationChannels(this)
+//        requestOverlayPermission()
 //        requestScreenCapturePermission()
+        requestScreenShotPermission()
         moveTaskToBack(true)
         prepareInitModel(application)
     }

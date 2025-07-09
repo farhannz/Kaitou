@@ -213,7 +213,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             unbindService(connection)
         }
         Log.i("Overlay Service", "Screenshot Taken")
-
         val intent = Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
             it.action = "CAPTURE_SCREENSHOT"
         }
