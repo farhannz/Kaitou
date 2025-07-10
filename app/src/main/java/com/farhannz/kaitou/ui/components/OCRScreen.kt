@@ -6,6 +6,7 @@ import android.content.ContentValues
 import android.content.Context
 import android.content.Context.WINDOW_SERVICE
 import android.graphics.Bitmap
+import android.graphics.Rect
 import android.os.Build
 import android.provider.MediaStore
 import android.util.Size
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathHitTester
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -64,18 +66,6 @@ import java.io.StringReader
 const val LOG_TAG = "OCRScreen"
 val logger = Logger(LOG_TAG)
 
-data class TokenInfo(
-    val surface: String,   // raw form, for bbox
-    val baseForm: String?,  // dictionary form, for lookup
-    val partOfSpeech: String
-)
-
-fun isVertical(box: BoundingBox): Boolean {
-    val width = box.x2 - box.x1
-    val height = box.y2 - box.y1
-    return height > width
-}
-
 fun tokenizeWithPOS(text: String): List<TokenInfo> {
     val tokenizer = JapaneseTokenizer(null, false, JapaneseTokenizer.Mode.NORMAL)
     tokenizer.setReader(StringReader(text))
@@ -104,161 +94,6 @@ fun tokenizeWithPOS(text: String): List<TokenInfo> {
 }
 
 
-fun groupTokens(tokens: List<TokenInfo>): List<List<TokenInfo>> {
-    val groups = mutableListOf<MutableList<TokenInfo>>()
-    var currentGroup = mutableListOf<TokenInfo>()
-
-    fun flush() {
-        if (currentGroup.isNotEmpty()) {
-            groups.add(currentGroup)
-            currentGroup = mutableListOf()
-        }
-    }
-
-    for (token in tokens) {
-        when {
-            token.partOfSpeech.startsWith("助詞") || token.partOfSpeech.startsWith("記号") -> {
-                flush()
-                groups.add(mutableListOf(token)) // isolate particle
-            }
-
-            else -> {
-                currentGroup.add(token)
-            }
-        }
-    }
-
-    flush()
-    return groups
-}
-
-
-
-@Composable
-fun VerticalJapaneseText(text: String, color: Color = Color.White) {
-    Column {
-        text.forEach { char ->
-            Text(
-                text = char.toString(),
-                color = color,
-                fontSize = 14.sp,
-                modifier = Modifier.padding(vertical = 1.dp)
-            )
-        }
-    }
-}
-@Composable
-fun BoundingBoxOverlay(data: OCRResult, onClicked: () -> Unit) {
-
-    val width = data.bbox.x2 - data.bbox.x1
-    val height = data.bbox.y2 - data.bbox.y1
-    // This overlay takes an absolute BoundingBox and places a clickable border at that exact location.
-    Box(
-        modifier = Modifier
-            .offset { IntOffset(data.bbox.x1.toInt(), data.bbox.y1.toInt()) }
-            .size(width.dp, height.dp)
-            .border(2.dp, Color.Red)
-            .clickable { onClicked() }
-    )
-//    Box(
-//        modifier = Modifier
-//            .offset { IntOffset(data.bbox.x1.toInt(), data.bbox.y1.toInt()) }
-//            .size(width.dp, height.dp)
-//            .border(2.dp, Color.Red)
-//            .clickable {
-//                onClicked()
-//            }
-//    ) {
-////        if (isVertical(data.bbox)) {
-//            VerticalJapaneseText(data.word)
-////        }
-////        else {
-////            Text(text = data.word, color = Color.White)
-////        }
-//    }
-}
-
-@Composable
-fun getExactScreenSize(): Size {
-    val context = LocalContext.current
-    return remember {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val windowMetrics = (context.getSystemService(WINDOW_SERVICE) as WindowManager).maximumWindowMetrics
-            Size(
-                windowMetrics.bounds.width(),
-                windowMetrics.bounds.height()
-            )
-        } else {
-            val displayMetrics = context.resources.displayMetrics
-            Size(displayMetrics.widthPixels, displayMetrics.heightPixels)
-        }
-    }
-}
-@Composable
-fun getAvailableScreenSize(): DpSize {
-    val windowInsets = WindowInsets.systemBars
-    val density = LocalDensity.current
-    val layoutDirection = LocalLayoutDirection.current
-    val displayCutout = WindowInsets.displayCutout.asPaddingValues()
-
-    return with(density) {
-        DpSize(
-            width = (LocalConfiguration.current.screenWidthDp.dp),
-            height = (LocalConfiguration.current.screenHeightDp.dp -
-                    windowInsets.getTop(density).dp -
-                    windowInsets.getBottom(density).dp)
-        )
-    }
-}
-
-@Composable
-fun PolygonOverlay(
-    points: List<List<Float>>,
-    onClicked: () -> Unit,
-    screenSize: Pair<Int, Int>  // Original screenshot dimensions
-) {
-    if (points.isEmpty()) return
-
-    Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .pointerInput(Unit) {
-                detectTapGestures(onTap = { onClicked() })
-            }
-    ) {
-        // Get the actual drawing area size (already safe area-padded)
-        val canvasWidth = size.width
-        val canvasHeight = size.height
-
-        // Calculate scale factors
-        val scaleX = canvasWidth / screenSize.first.toFloat()
-        val scaleY = canvasHeight / screenSize.second.toFloat()
-
-        // Create path from original points
-        val path = Path().apply {
-            val first = points[0]
-            moveTo(first[0] * scaleX, first[1] * scaleY)
-            for (i in 1 until points.size) {
-                val point = points[i]
-                lineTo(point[0] * scaleX, point[1] * scaleY)
-            }
-            close()
-        }
-
-        // Draw the polygon
-        drawPath(
-            path = path,
-            color = Color.Red.copy(alpha = 0.1f),
-            style = Fill
-        )
-        drawPath(
-            path = path,
-            color = Color.Red,
-            style = Stroke(width = 1.dp.toPx())
-        )
-    }
-}
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WordPolygonsOverlay(
@@ -268,24 +103,79 @@ fun WordPolygonsOverlay(
 ) {
     var showPopup by remember { mutableStateOf(false) }
     var tokens by remember { mutableStateOf<List<TokenInfo>>(emptyList()) }
+    var selectedWord by remember { mutableStateOf("") }
+
+    // Precompute bounding boxes for hit testing
+    val boundingBoxes: List<Pair<String, Rect>> = remember(wordsWithPolys, screenSize) {
+        wordsWithPolys.map { (word, poly) ->
+            val minX = poly.minOf { it[0] }
+            val minY = poly.minOf { it[1] }
+            val maxX = poly.maxOf { it[0] }
+            val maxY = poly.maxOf { it[1] }
+            word to Rect(minX.toInt(), minY.toInt(), maxX.toInt(), maxY.toInt())
+        }
+    }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0x51000000))
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .clickable { onClicked() }
     ) {
-        // Draw all polygons directly in the safe area
-        for ((word, poly) in wordsWithPolys) {
-            PolygonOverlay(
-                screenSize = screenSize,
-                points = poly,
-                onClicked = {
-                    tokens = tokenizeWithPOS(word)
-                    showPopup = true
+        Canvas(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(wordsWithPolys, boundingBoxes) {
+                    logger.DEBUG(boundingBoxes.toString())
+                    detectTapGestures { offset : Offset ->
+                        logger.DEBUG(offset.toString())
+                        val canvasWidth = size.width
+                        val canvasHeight = size.height
+                        val scaleX = canvasWidth / screenSize.first.toFloat()
+                        val scaleY = canvasHeight / screenSize.second.toFloat()
+
+                        // Check if tap is inside any polygon's bounding box
+                        val tappedIndex = boundingBoxes.indexOfFirst { (_, rect) ->
+                            offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
+                                    offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
+                        }
+                        if (tappedIndex != -1) {
+                            logger.DEBUG("${offset.toString()} - $tappedIndex")
+                            // Verify exact polygon hit
+                            val (word, poly) = wordsWithPolys[tappedIndex]
+                            logger.DEBUG("$word, $poly")
+                            tokens = tokenizeWithPOS(word)
+                            showPopup = true
+                        } else onClicked()
+                    }
                 }
-            )
+        ) {
+            val canvasWidth = size.width
+            val canvasHeight = size.height
+            val scaleX = canvasWidth / screenSize.first.toFloat()
+            val scaleY = canvasHeight / screenSize.second.toFloat()
+
+            // Draw all polygons
+            wordsWithPolys.forEach { (_, poly) ->
+                val path = Path().apply {
+                    moveTo(poly[0][0] * scaleX, poly[0][1] * scaleY)
+                    poly.drop(1).forEach { point ->
+                        lineTo(point[0] * scaleX, point[1] * scaleY)
+                    }
+                    close()
+                }
+
+                drawPath(
+                    path = path,
+                    color = Color.Red.copy(alpha = 0.1f),
+                    style = Fill
+                )
+                drawPath(
+                    path = path,
+                    color = Color.Red,
+                    style = Stroke(width = 1.dp.toPx())
+                )
+            }
         }
 
         if (showPopup) {
@@ -308,7 +198,24 @@ fun WordPolygonsOverlay(
         }
     }
 }
-
+//if (showPopup) {
+//    Surface(
+//        modifier = Modifier
+//            .clickable { showPopup = false }
+//            .background(MaterialTheme.colorScheme.surface)
+//            .padding(16.dp)
+//    ) {
+//        Column(
+//            modifier = Modifier
+//                .verticalScroll(rememberScrollState())
+//                .widthIn(max = 280.dp)
+//        ) {
+//            tokens.forEach { token ->
+//                PopUpDict(token.baseForm ?: token.surface)
+//            }
+//        }
+//    }
+//}
 fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
     val stream = ByteArrayOutputStream()
     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)

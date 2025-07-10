@@ -20,25 +20,17 @@ data class OCRResult(
 )
 
 
-//@Serializable
-//data class Point(
-//    val x: Int,
-//    val y: Int
-//)
-//
-//@Serializable
-//data class Polygon(
-//    val points: List<Point>
-//)
-
-
 @Serializable
 data class PpOcrResponse(
     @SerialName("rec_texts") val texts: List<String>,
     @SerialName("rec_polys") val boxes: List<List<List<Float>>>
     // You can add other fields like rec_scores if needed
 )
-
+data class TokenInfo(
+    val surface: String,   // raw form, for bbox
+    val baseForm: String?,  // dictionary form, for lookup
+    val partOfSpeech: String
+)
 sealed class OCRUIState {
     object ProcessingOCR : OCRUIState()
 
