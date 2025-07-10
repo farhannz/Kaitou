@@ -9,10 +9,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.farhannz.kaitou.data.models.*
 
 
-@Preview()
+@Preview
+@Composable
+fun PreviewPopUp(){
+    PopUpDict()
+}
+
 @Composable
 fun PopUpDict() {
     val examples = arrayListOf(
@@ -32,7 +38,6 @@ fun PopUpDict() {
         jlptLevel = "N5",
         examples = examples
     )
-
     ElevatedCard(
         modifier = Modifier
             .padding(16.dp)

@@ -24,6 +24,7 @@ android {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            signingConfig = signingConfigs.getByName("debug")
         }
     }
 
@@ -80,10 +81,12 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     debugImplementation("androidx.compose.ui:ui-tooling")
 
+    implementation("com.squareup.okhttp3:okhttp:4.12.0") // or latest
+
     // UI Tests
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 //    implementation("com.worksap.nlp:sudachi:0.7.5")
     implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.apache.lucene:lucene-analyzers-kuromoji:8.11.0")
@@ -109,5 +112,6 @@ dependencies {
     implementation("androidx.compose.runtime:runtime-livedata")
     // Optional - Integration with RxJava
     implementation("androidx.compose.runtime:runtime-rxjava2")
+    debugImplementation("androidx.compose.ui:ui-tooling:1.8.3")
 
 }

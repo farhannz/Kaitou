@@ -5,7 +5,6 @@ import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
 import android.graphics.Bitmap
-import android.media.projection.MediaProjectionManager
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
@@ -15,32 +14,51 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.unit.times
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.helpers.Logger
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
+import okhttp3.Call
+import okhttp3.Callback
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.MultipartBody
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
+import okhttp3.Response
 import org.apache.lucene.analysis.ja.JapaneseTokenizer
 import org.apache.lucene.analysis.ja.tokenattributes.*
 import org.apache.lucene.analysis.tokenattributes.*
+import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.io.StringReader
 
+const val LOG_TAG = "OCRScreen"
+val logger = Logger(LOG_TAG)
 
 data class TokenInfo(
     val surface: String,   // raw form, for bbox
@@ -157,35 +175,53 @@ fun BoundingBoxOverlay(data: OCRResult, onClicked: () -> Unit) {
 }
 
 @Composable
+fun rememberWindowSafeArea(): PaddingValues {
+    val insets = WindowInsets.systemBars
+    return PaddingValues(
+        start = insets.getLeft(
+            LocalDensity.current,
+            layoutDirection = LayoutDirection.Ltr
+        ).dp,
+        top = insets.getTop(LocalDensity.current).dp,
+        end = insets.getRight(
+            LocalDensity.current,
+            layoutDirection = LayoutDirection.Ltr
+        ).dp,
+        bottom = insets.getBottom(LocalDensity.current).dp
+    )
+}
+
+@Composable
 fun PolygonOverlay(
-    points: List<List<Int>>, // your polygon from rec_polys
-    onClicked: () -> Unit
+    points: List<List<Float>>, // your polygon from rec_polys
+    onClicked: () -> Unit,
+    tokens: List<TokenInfo>
 ) {
     if (points.isEmpty()) return
 
-    val scaleX = 1080.toFloat() / 738.toFloat()
-    val scaleY = 2340.toFloat() / 1600.toFloat()
+    val configuration = LocalConfiguration.current
+    val density = LocalDensity.current
+    val screenSize = DpSize(configuration.screenWidthDp.dp,configuration.screenHeightDp.dp)
 
-    val scaledPoints = points.map { point ->
-        Offset(
-            point[0].toFloat() * scaleX,
-            point[1].toFloat() * scaleY
-        )
+    val offsetPoints = points.map {
+        with (density) {
+            Offset(
+                it[0] * screenSize.width.toPx(),
+                it[1] * screenSize.height.toPx()
+            )
+        }
     }
 
-//    val offsetPoints = points.map { Offset(it[0].toFloat(), it[1].toFloat()) }
-
     // Calculate the bounding box to position the canvas efficiently
-    val minX = scaledPoints.minOf { it.x }
-    val minY = scaledPoints.minOf { it.y }
-    val maxX = scaledPoints.maxOf { it.x }
-    val maxY = scaledPoints.maxOf { it.y }
+    val minX = offsetPoints.minOf { it.x }
+    val minY = offsetPoints.minOf { it.y }
+    val maxX = offsetPoints.maxOf { it.x }
+    val maxY = offsetPoints.maxOf { it.y }
 
 
     val width = (maxX - minX).toInt()
     val height = (maxY - minY).toInt()
 
-    val density = LocalDensity.current
     val xDp = with(density) { width.toDp() }
     val yDp = with(density) { height.toDp() }
 
@@ -198,9 +234,9 @@ fun PolygonOverlay(
             }
     ) {
         val path = Path().apply {
-            moveTo(scaledPoints[0].x - minX, scaledPoints[0].y - minY)
-            for (i in 1 until scaledPoints.size) {
-                lineTo(scaledPoints[i].x - minX, scaledPoints[i].y - minY)
+            moveTo(offsetPoints[0].x - minX, offsetPoints[0].y - minY)
+            for (i in 1 until offsetPoints.size) {
+                lineTo(offsetPoints[i].x - minX, offsetPoints[i].y - minY)
             }
             close()
         }
@@ -219,28 +255,83 @@ fun PolygonOverlay(
 
 @Composable
 fun WordPolygonsOverlay(
-    wordsWithPolys: List<Pair<String, List<List<Int>>>>,
+    wordsWithPolys: List<Pair<String, List<List<Float>>>>,
     onClicked: () -> Unit
 ) {
+    var showPopup by remember {mutableStateOf(false)}
+    var tokens by remember { mutableStateOf<List<TokenInfo>>(emptyList())}
     Box(modifier = Modifier
         .fillMaxSize()
         .background(Color(0xAA000000))
         .clickable { onClicked() }) {
-        for ((word, poly) in wordsWithPolys) {
-            PolygonOverlay(
-                points = poly,
-                onClicked = {
-                    Log.d("Overlay", "Clicked: $word")
-                    val tokens = tokenizeWithPOS(word)
-                    for (token in tokens) {
-                        Log.i("Overlay", "${token.surface} - ${token.baseForm}")
+        if (!showPopup) {
+            for ((word, poly) in wordsWithPolys) {
+                PolygonOverlay(
+                    tokens = tokens,
+                    points = poly,
+                    onClicked = {
+                        tokens = tokenizeWithPOS(word)
+                        showPopup = true
+                        logger.DEBUG("Clicked $word")
+                        for (token in tokens) {
+                            logger.INFO("${token.surface} - ${token.baseForm}")
+                        }
+                        // Do something with the word
                     }
-                    // Do something with the word
+                )
+            }
+        }
+
+        if (showPopup) {
+            logger.DEBUG("Tokens sizes : ${tokens.size}")
+            Surface (modifier=Modifier.clickable(onClick = {showPopup = false})) {
+                Column (modifier= Modifier.verticalScroll(rememberScrollState())) {
+                    tokens.forEach {
+                        logger.DEBUG("${it.surface} - ${it.baseForm}")
+                            PopUpDict()
+                    }
                 }
-            )
+            }
         }
     }
 }
+
+
+fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
+    val stream = ByteArrayOutputStream()
+    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
+    return stream.toByteArray()
+}
+fun sendBitmapToServer(bitmap: Bitmap, callback: Callback) {
+    val client = OkHttpClient()
+    val mediaType = "image/jpeg".toMediaTypeOrNull()
+    val imageBytes = bitmapToByteArray(bitmap)
+
+    val requestBody = MultipartBody.Builder()
+        .setType(MultipartBody.FORM)
+        .addFormDataPart(
+            "file", "image.jpg",
+            imageBytes.toRequestBody(mediaType)
+        )
+        .build()
+
+    val request = Request.Builder()
+        .url(" http://10.0.2.2:8000/ocr")
+        .post(requestBody)
+        .build()
+    client.newCall(request).enqueue(callback)
+//    client.newCall(request).enqueue(object:Callback {
+//        override fun onFailure(call: Call, e: IOException) {
+//            logger.ERROR("Failed: ${e.message}")
+//        }
+//
+//        override fun onResponse(call: Call, response: Response) {
+//            val responseText = response.body?.string()
+//            logger.DEBUG("Success: $responseText")
+//        }
+//    })
+}
+
 
 
 fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
@@ -248,7 +339,7 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
     values.put(MediaStore.Images.Media.DISPLAY_NAME, filename)
     values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg") // or "image/png"
 
-    val resolver: ContentResolver = context.getContentResolver()
+    val resolver: ContentResolver = context.contentResolver
     val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
 
     if (uri != null) {
@@ -291,7 +382,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
 
     val captureController = rememberCaptureController()
     val scope = rememberCoroutineScope()
-    val zipped = remember { mutableStateListOf<Pair<String, List<List<Int>>>>() }
+    val zipped = remember { mutableStateListOf<Pair<String, List<List<Float>>>>() }
     when (val state = ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
@@ -303,11 +394,26 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 LaunchedEffect(ocrState) {
                     delay(500) // Simulate loading
                     val ocrString = MockResult().result()
-                    var jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
-                    val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(ocrString)
-                    zipped.addAll(response.texts.zip(response.boxes))
+                    sendBitmapToServer(inputImage, object : Callback {
+                        override fun onFailure(call: Call, e: IOException) {
+                            logger.ERROR("Failed: ${e.message}")
+                        }
 
-                    ocrState = OCRUIState.Done(results)
+                        override fun onResponse(call: Call, response: Response) {
+                            val responseText = response.body?.string()
+                            logger.DEBUG(responseText!!)
+                            var jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
+                            val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText!!)
+                            zipped.addAll(response.texts.zip(response.boxes))
+                            ocrState = OCRUIState.Done(results)
+                        }
+
+                    })
+//                    var jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
+//                    val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(ocrString)
+//                    zipped.addAll(response.texts.zip(response.boxes))
+//
+//                    ocrState = OCRUIState.Done(results)
                 }
                 CircularProgressIndicator()
             }

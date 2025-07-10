@@ -35,7 +35,7 @@ data class OCRResult(
 @Serializable
 data class PpOcrResponse(
     @SerialName("rec_texts") val texts: List<String>,
-    @SerialName("rec_polys") val boxes: List<List<List<Int>>>
+    @SerialName("rec_polys") val boxes: List<List<List<Float>>>
     // You can add other fields like rec_scores if needed
 )
 

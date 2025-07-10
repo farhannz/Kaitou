@@ -39,32 +39,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private val screenCaptureLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) { result ->
-        if (result.resultCode == RESULT_OK && result.data != null) {
-            // Permission granted, start capturing
-            startCaptureService(result.resultCode, result.data!!)
-        } else {
-            // Permission denied
-            Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
-        }
-    }
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    private fun requestScreenCapturePermission() {
-//        ActivityCompat.requestPermissions(
-//            this@MainActivity,
-//            arrayOf(Manifest.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION),
-//            ScreenshotService.MEDIA_PROJECTION_REQUEST_CODE
-//        )
-        val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
-        val captureIntent = mediaProjectionManager.createScreenCaptureIntent()
-
-        // Launch the permission request using the launcher
-        screenCaptureLauncher.launch(captureIntent)
-    }
-
-
     private fun requestOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
             val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
@@ -74,17 +48,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun startCaptureService(resultCode: Int, data: Intent) {
-        val serviceIntent = Intent(this, ScreenshotService::class.java).apply {
-            putExtra("resultCode", resultCode)
-            putExtra("data", data)
-        }
-        ContextCompat.startForegroundService(this, serviceIntent)
-    }
-
     private fun startOverlayService() {
         val intent = Intent(this, OverlayService::class.java)
         ContextCompat.startForegroundService(this, intent)
+        moveTaskToBack(true)
     }
 
 
@@ -104,6 +71,7 @@ class MainActivity : ComponentActivity() {
                 requestOverlayPermission()
             }
             ContextCompat.startForegroundService(this, intent)
+            moveTaskToBack(true)
         } else {
             // Permission denied
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
@@ -118,11 +86,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-//        NotificationHelper.createNotificationChannels(this)
-//        requestOverlayPermission()
-//        requestScreenCapturePermission()
         requestScreenShotPermission()
-        moveTaskToBack(true)
         prepareInitModel(application)
     }
 }
