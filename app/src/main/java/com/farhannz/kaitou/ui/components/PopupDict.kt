@@ -16,11 +16,13 @@ import com.farhannz.kaitou.data.models.*
 @Preview
 @Composable
 fun PreviewPopUp(){
-    PopUpDict()
+    PopUpDict("Test")
 }
 
 @Composable
-fun PopUpDict() {
+fun PopUpDict(
+    word: String
+) {
     val examples = arrayListOf(
         Example(
             japanese = "こんにちは、田中さん。",
@@ -30,7 +32,7 @@ fun PopUpDict() {
     )
 
     val vocabularyList = VocabularyEntry(
-        word = "こんにちは",
+        word = word,
         reading = "こんにちは",
         romaji = "konnichiwa",
         definition = "Hello; Good afternoon (greeting used from late morning to late afternoon)",

@@ -7,6 +7,7 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
@@ -24,15 +25,25 @@ import android.os.Looper
 import android.provider.MediaStore
 import android.util.DisplayMetrics
 import android.util.Log
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.unit.DpSize
+import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.window.layout.WindowMetrics
 import androidx.core.graphics.createBitmap
@@ -124,6 +135,28 @@ class ScreenshotServiceRework : Service () {
         return START_STICKY
     }
 
+    fun excludeWindowInsets(bitmap: Bitmap): Bitmap {
+        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
+        val windowMetrics = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            windowManager.currentWindowMetrics
+        } else {
+            return bitmap // Can't get insets below API 30 easily
+        }
+
+        val insets = windowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
+
+        val cropTop = insets.top
+        val cropBottom = insets.bottom
+        val cropLeft = insets.left
+        val cropRight = insets.right
+        logger.DEBUG(insets.toString())
+
+        val cropWidth = bitmap.width - cropLeft - cropRight
+        val cropHeight = bitmap.height - cropTop - cropBottom
+
+        return Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
+    }
+
     fun prepareScreenshot() {
         logger.DEBUG("rc = $rc, dataIntent = $dataIntent")
         val metrics = resources.displayMetrics
@@ -145,7 +178,8 @@ class ScreenshotServiceRework : Service () {
                     return@setOnImageAvailableListener
                 }
 
-                val bitmap = image.toBitmap()
+                val bitmap = excludeWindowInsets(image.toBitmap())
+//                val bitmap = image.toBitmap()/
                 image.close()
                 onScreenshotTaken?.invoke(bitmap)
 

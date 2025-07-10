@@ -4,9 +4,13 @@ import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
+import android.content.Context.WINDOW_SERVICE
 import android.graphics.Bitmap
+import android.os.Build
 import android.provider.MediaStore
-import android.util.Log
+import android.util.Size
+import android.view.Window
+import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -29,18 +33,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.unit.times
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.Logger
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
-import kotlinx.coroutines.delay
 import kotlinx.serialization.json.Json
 import okhttp3.Call
 import okhttp3.Callback
@@ -50,6 +53,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
+import okhttp3.internal.wait
 import org.apache.lucene.analysis.ja.JapaneseTokenizer
 import org.apache.lucene.analysis.ja.tokenattributes.*
 import org.apache.lucene.analysis.tokenattributes.*
@@ -175,71 +179,73 @@ fun BoundingBoxOverlay(data: OCRResult, onClicked: () -> Unit) {
 }
 
 @Composable
-fun rememberWindowSafeArea(): PaddingValues {
-    val insets = WindowInsets.systemBars
-    return PaddingValues(
-        start = insets.getLeft(
-            LocalDensity.current,
-            layoutDirection = LayoutDirection.Ltr
-        ).dp,
-        top = insets.getTop(LocalDensity.current).dp,
-        end = insets.getRight(
-            LocalDensity.current,
-            layoutDirection = LayoutDirection.Ltr
-        ).dp,
-        bottom = insets.getBottom(LocalDensity.current).dp
-    )
+fun getExactScreenSize(): Size {
+    val context = LocalContext.current
+    return remember {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics = (context.getSystemService(WINDOW_SERVICE) as WindowManager).maximumWindowMetrics
+            Size(
+                windowMetrics.bounds.width(),
+                windowMetrics.bounds.height()
+            )
+        } else {
+            val displayMetrics = context.resources.displayMetrics
+            Size(displayMetrics.widthPixels, displayMetrics.heightPixels)
+        }
+    }
+}
+@Composable
+fun getAvailableScreenSize(): DpSize {
+    val windowInsets = WindowInsets.systemBars
+    val density = LocalDensity.current
+    val layoutDirection = LocalLayoutDirection.current
+    val displayCutout = WindowInsets.displayCutout.asPaddingValues()
+
+    return with(density) {
+        DpSize(
+            width = (LocalConfiguration.current.screenWidthDp.dp),
+            height = (LocalConfiguration.current.screenHeightDp.dp -
+                    windowInsets.getTop(density).dp -
+                    windowInsets.getBottom(density).dp)
+        )
+    }
 }
 
 @Composable
 fun PolygonOverlay(
-    points: List<List<Float>>, // your polygon from rec_polys
+    points: List<List<Float>>,
     onClicked: () -> Unit,
-    tokens: List<TokenInfo>
+    screenSize: Pair<Int, Int>  // Original screenshot dimensions
 ) {
     if (points.isEmpty()) return
 
-    val configuration = LocalConfiguration.current
-    val density = LocalDensity.current
-    val screenSize = DpSize(configuration.screenWidthDp.dp,configuration.screenHeightDp.dp)
-
-    val offsetPoints = points.map {
-        with (density) {
-            Offset(
-                it[0] * screenSize.width.toPx(),
-                it[1] * screenSize.height.toPx()
-            )
-        }
-    }
-
-    // Calculate the bounding box to position the canvas efficiently
-    val minX = offsetPoints.minOf { it.x }
-    val minY = offsetPoints.minOf { it.y }
-    val maxX = offsetPoints.maxOf { it.x }
-    val maxY = offsetPoints.maxOf { it.y }
-
-
-    val width = (maxX - minX).toInt()
-    val height = (maxY - minY).toInt()
-
-    val xDp = with(density) { width.toDp() }
-    val yDp = with(density) { height.toDp() }
-
     Canvas(
         modifier = Modifier
-            .offset { IntOffset(minX.toInt(), minY.toInt()) }
-            .size(xDp, yDp)
+            .fillMaxSize()
             .pointerInput(Unit) {
                 detectTapGestures(onTap = { onClicked() })
             }
     ) {
+        // Get the actual drawing area size (already safe area-padded)
+        val canvasWidth = size.width
+        val canvasHeight = size.height
+
+        // Calculate scale factors
+        val scaleX = canvasWidth / screenSize.first.toFloat()
+        val scaleY = canvasHeight / screenSize.second.toFloat()
+
+        // Create path from original points
         val path = Path().apply {
-            moveTo(offsetPoints[0].x - minX, offsetPoints[0].y - minY)
-            for (i in 1 until offsetPoints.size) {
-                lineTo(offsetPoints[i].x - minX, offsetPoints[i].y - minY)
+            val first = points[0]
+            moveTo(first[0] * scaleX, first[1] * scaleY)
+            for (i in 1 until points.size) {
+                val point = points[i]
+                lineTo(point[0] * scaleX, point[1] * scaleY)
             }
             close()
         }
+
+        // Draw the polygon
         drawPath(
             path = path,
             color = Color.Red.copy(alpha = 0.1f),
@@ -248,54 +254,60 @@ fun PolygonOverlay(
         drawPath(
             path = path,
             color = Color.Red,
-            style = Stroke(width = 2.dp.toPx())
+            style = Stroke(width = 1.dp.toPx())
         )
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun WordPolygonsOverlay(
     wordsWithPolys: List<Pair<String, List<List<Float>>>>,
-    onClicked: () -> Unit
+    onClicked: () -> Unit,
+    screenSize: Pair<Int, Int>
 ) {
-    var showPopup by remember {mutableStateOf(false)}
-    var tokens by remember { mutableStateOf<List<TokenInfo>>(emptyList())}
-    Box(modifier = Modifier
-        .fillMaxSize()
-        .background(Color(0xAA000000))
-        .clickable { onClicked() }) {
-        if (!showPopup) {
-            for ((word, poly) in wordsWithPolys) {
-                PolygonOverlay(
-                    tokens = tokens,
-                    points = poly,
-                    onClicked = {
-                        tokens = tokenizeWithPOS(word)
-                        showPopup = true
-                        logger.DEBUG("Clicked $word")
-                        for (token in tokens) {
-                            logger.INFO("${token.surface} - ${token.baseForm}")
-                        }
-                        // Do something with the word
-                    }
-                )
-            }
+    var showPopup by remember { mutableStateOf(false) }
+    var tokens by remember { mutableStateOf<List<TokenInfo>>(emptyList()) }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0x51000000))
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+            .clickable { onClicked() }
+    ) {
+        // Draw all polygons directly in the safe area
+        for ((word, poly) in wordsWithPolys) {
+            PolygonOverlay(
+                screenSize = screenSize,
+                points = poly,
+                onClicked = {
+                    tokens = tokenizeWithPOS(word)
+                    showPopup = true
+                }
+            )
         }
 
         if (showPopup) {
-            logger.DEBUG("Tokens sizes : ${tokens.size}")
-            Surface (modifier=Modifier.clickable(onClick = {showPopup = false})) {
-                Column (modifier= Modifier.verticalScroll(rememberScrollState())) {
-                    tokens.forEach {
-                        logger.DEBUG("${it.surface} - ${it.baseForm}")
-                            PopUpDict()
+            Surface(
+                modifier = Modifier
+                    .clickable { showPopup = false }
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .widthIn(max = 280.dp)
+                ) {
+                    tokens.forEach { token ->
+                        PopUpDict(token.baseForm ?: token.surface)
                     }
                 }
             }
         }
     }
 }
-
 
 fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
     val stream = ByteArrayOutputStream()
@@ -316,7 +328,7 @@ fun sendBitmapToServer(bitmap: Bitmap, callback: Callback) {
         .build()
 
     val request = Request.Builder()
-        .url(" http://10.0.2.2:8000/ocr")
+        .url(" http://192.168.101.6:8000/ocr")
         .post(requestBody)
         .build()
     client.newCall(request).enqueue(callback)
@@ -392,18 +404,19 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
-                    delay(500) // Simulate loading
-                    val ocrString = MockResult().result()
+//                    delay(500) // Simulate loading
+//                    val ocrString = MockResult().result()
                     sendBitmapToServer(inputImage, object : Callback {
                         override fun onFailure(call: Call, e: IOException) {
                             logger.ERROR("Failed: ${e.message}")
+                            ocrState = OCRUIState.Failed
                         }
 
                         override fun onResponse(call: Call, response: Response) {
                             val responseText = response.body?.string()
                             logger.DEBUG(responseText!!)
-                            var jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
-                            val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText!!)
+                            val jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
+                            val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText)
                             zipped.addAll(response.texts.zip(response.boxes))
                             ocrState = OCRUIState.Done(results)
                         }
@@ -418,8 +431,12 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 CircularProgressIndicator()
             }
         }
+        is OCRUIState.Failed -> {
+            Toast.makeText(LocalContext.current,"Failed while processing OCR",Toast.LENGTH_SHORT).show()
+            onClicked()
+        }
         is OCRUIState.Done -> {
-            WordPolygonsOverlay(zipped, onClicked)
+            WordPolygonsOverlay(zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
 //            for (pair in zipped) {
 //                val text = pair.first
 //                val boxes = pair.second

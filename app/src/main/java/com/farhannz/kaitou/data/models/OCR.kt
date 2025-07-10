@@ -41,6 +41,8 @@ data class PpOcrResponse(
 
 sealed class OCRUIState {
     object ProcessingOCR : OCRUIState()
+
+    object Failed : OCRUIState()
     data class Done(val results: List<OCRResult>) : OCRUIState()
 }
 
