@@ -188,6 +188,7 @@ fun WordPolygonsOverlay(
                     )
                     logger.DEBUG(tokens.toString())
                     val merged = TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
+                        .let { TokenManager().correctAuxiliaryNegative(it)}
                     logger.DEBUG("Merged : $merged")
                     logger.DEBUG("Merged length ${merged.size}")
                     merged.forEach {

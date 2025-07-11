@@ -6,34 +6,70 @@ import org.apache.lucene.analysis.ja.Token
 class TokenManager {
 
     fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>?, maxGram: Int = 6): List<TokenInfo> {
+        // Add before merging
+        val filteredTokens = tokens.map {
+            if (it.surface in setOf("!", "?", "！", "？", "。", "、")) {
+                it.copy(partOfSpeech = "記号") // Mark as symbol
+            } else it
+        }
         val result = mutableListOf<TokenInfo>()
         var i = 0
-        while (i < tokens.size) {
+        while (i < filteredTokens.size) {
             var merged: TokenInfo? = null
             outer@ for (n in maxGram downTo 2) {
-                if (i + n > tokens.size) continue
-                val span = tokens.subList(i, i + n)
-                if (!span.all { it.partOfSpeech.startsWith("名詞") || it.partOfSpeech.startsWith("動詞") || it.partOfSpeech.startsWith("助動詞") }) continue
-//                val text = span.dropLast(1).joinToString("") { it.surfaceFormString } + span.last().baseForm
-                // Handle cases where baseForm might be null/empty
-                val text = span.dropLast(1).joinToString("") { it.surface } +
-                        (span.last().baseForm ?: span.last().surface)
-                if (dict?.contains(text) ?: false) {
-                    merged = TokenInfo(text,text,span.last().partOfSpeech)
+                if (i + n > filteredTokens.size) continue
+                val span = filteredTokens.subList(i, i + n)
+                val text = span.joinToString("") { it.surface } // Always use surface form
+
+// Special case: Allow particle + auxiliary verb merging
+                val allowMerge = span.all { token ->
+                    when {
+                        token.partOfSpeech.startsWith("助詞") -> true // Allow particles
+                        token.partOfSpeech.startsWith("助動詞") -> true
+                        token.partOfSpeech.startsWith("名詞") -> true
+                        token.partOfSpeech.startsWith("動詞") -> true
+                        else -> false
+                    }
+                }
+
+                if (allowMerge && dict?.contains(text) ?: false) {
+                    // Preserve original surface but use first POS
+                    merged = TokenInfo(text, text, span.first().partOfSpeech)
                     i += n
                     break@outer
                 }
             }
-            if (merged != null) {
-                result += merged
-            } else {
-                result += tokens[i]
-                i++
-            }
+            result.add(merged ?: filteredTokens[i])
+            i += if (merged != null) 0 else 1
         }
         return result
     }
 
+    fun correctAuxiliaryNegative(tokens: List<TokenInfo>): List<TokenInfo> {
+        return tokens.mapIndexed { i, token ->
+            when {
+                // Rule 1: Correct ない after particles
+                token.surface == "ない" && i > 0 && tokens[i-1].surface == "は" ->
+                    token.copy(partOfSpeech = "助動詞")
+
+                // Rule 2: Correct ない after verbs
+                token.surface == "ない" && i > 0 && tokens[i-1].partOfSpeech.startsWith("動詞") ->
+                    token.copy(partOfSpeech = "助動詞")
+
+                // Rule 3: Handle common negative forms
+                token.surface in setOf("ん", "ず") ->
+                    token.copy(partOfSpeech = "助動詞")
+
+                else -> token
+            }
+        }
+    }
+    // Helper for composite POS
+    private fun determineCompositePos(span: List<TokenInfo>): String {
+        // Custom logic based on span tokens
+        return if (span.any { it.partOfSpeech.startsWith("助詞") }) "compound"
+        else span.last().partOfSpeech
+    }
 
 // Taken from https://is.muni.cz/th/opw9s/Thesis___Analyzer_of_Japanese_Texts_for_Language_Learning_Purposes.pdf
 /*
