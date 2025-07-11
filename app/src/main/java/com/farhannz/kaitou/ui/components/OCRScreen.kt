@@ -4,18 +4,12 @@ import android.annotation.SuppressLint
 import android.content.ContentResolver
 import android.content.ContentValues
 import android.content.Context
-import android.content.Context.WINDOW_SERVICE
 import android.graphics.Bitmap
 import android.graphics.Rect
-import android.os.Build
 import android.provider.MediaStore
-import android.util.Size
-import android.view.Window
-import android.view.WindowManager
 import android.widget.Toast
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -28,20 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathHitTester
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.tooling.preview.Preview
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.Logger
@@ -55,7 +41,6 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import okhttp3.internal.wait
 import org.apache.lucene.analysis.ja.JapaneseTokenizer
 import org.apache.lucene.analysis.ja.tokenattributes.*
 import org.apache.lucene.analysis.tokenattributes.*
@@ -127,7 +112,7 @@ fun WordPolygonsOverlay(
                 .fillMaxSize()
                 .pointerInput(wordsWithPolys, boundingBoxes) {
                     logger.DEBUG(boundingBoxes.toString())
-                    detectTapGestures { offset : Offset ->
+                    detectTapGestures { offset: Offset ->
                         logger.DEBUG(offset.toString())
                         val canvasWidth = size.width
                         val canvasHeight = size.height
@@ -140,13 +125,16 @@ fun WordPolygonsOverlay(
                                     offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
                         }
                         if (tappedIndex != -1) {
-                            logger.DEBUG("${offset.toString()} - $tappedIndex")
+                            logger.DEBUG("$offset - $tappedIndex")
                             // Verify exact polygon hit
                             val (word, poly) = wordsWithPolys[tappedIndex]
+                            selectedWord = word
                             logger.DEBUG("$word, $poly")
                             tokens = tokenizeWithPOS(word)
                             showPopup = true
-                        } else onClicked()
+                        } else {
+                            if (!showPopup) onClicked()
+                        }
                     }
                 }
         ) {
@@ -182,14 +170,20 @@ fun WordPolygonsOverlay(
             Surface(
                 modifier = Modifier
                     .clickable { showPopup = false }
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(16.dp)
+                    .background(Color.Transparent)
+                    .fillMaxSize()
             ) {
                 Column(
                     modifier = Modifier
                         .verticalScroll(rememberScrollState())
-                        .widthIn(max = 280.dp)
+                        .background(Color.Transparent)
+                        .matchParentSize()
                 ) {
+                    Text(
+                        text = selectedWord,
+                        style = MaterialTheme.typography.headlineSmall,
+                        modifier = Modifier.padding(16.dp)
+                    )
                     tokens.forEach { token ->
                         PopUpDict(token.baseForm ?: token.surface)
                     }
@@ -198,24 +192,6 @@ fun WordPolygonsOverlay(
         }
     }
 }
-//if (showPopup) {
-//    Surface(
-//        modifier = Modifier
-//            .clickable { showPopup = false }
-//            .background(MaterialTheme.colorScheme.surface)
-//            .padding(16.dp)
-//    ) {
-//        Column(
-//            modifier = Modifier
-//                .verticalScroll(rememberScrollState())
-//                .widthIn(max = 280.dp)
-//        ) {
-//            tokens.forEach { token ->
-//                PopUpDict(token.baseForm ?: token.surface)
-//            }
-//        }
-//    }
-//}
 fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
     val stream = ByteArrayOutputStream()
     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
@@ -239,16 +215,6 @@ fun sendBitmapToServer(bitmap: Bitmap, callback: Callback) {
         .post(requestBody)
         .build()
     client.newCall(request).enqueue(callback)
-//    client.newCall(request).enqueue(object:Callback {
-//        override fun onFailure(call: Call, e: IOException) {
-//            logger.ERROR("Failed: ${e.message}")
-//        }
-//
-//        override fun onResponse(call: Call, response: Response) {
-//            val responseText = response.body?.string()
-//            logger.DEBUG("Success: $responseText")
-//        }
-//    })
 }
 
 
@@ -282,8 +248,6 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
-
-    val context = LocalContext.current
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
 
     // Mock data for demonstration
@@ -300,7 +264,6 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
     }
 
     val captureController = rememberCaptureController()
-    val scope = rememberCoroutineScope()
     val zipped = remember { mutableStateListOf<Pair<String, List<List<Float>>>>() }
     when (val state = ocrState) {
         is OCRUIState.ProcessingOCR -> {
@@ -311,8 +274,6 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
-//                    delay(500) // Simulate loading
-//                    val ocrString = MockResult().result()
                     sendBitmapToServer(inputImage, object : Callback {
                         override fun onFailure(call: Call, e: IOException) {
                             logger.ERROR("Failed: ${e.message}")
@@ -329,11 +290,6 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                         }
 
                     })
-//                    var jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
-//                    val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(ocrString)
-//                    zipped.addAll(response.texts.zip(response.boxes))
-//
-//                    ocrState = OCRUIState.Done(results)
                 }
                 CircularProgressIndicator()
             }
@@ -344,74 +300,6 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
         }
         is OCRUIState.Done -> {
             WordPolygonsOverlay(zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
-//            for (pair in zipped) {
-//                val text = pair.first
-//                val boxes = pair.second
-//                Log.i("PPOcrResponse", "${text} - ${boxes}")
-//            }
-//            Box(
-//                modifier = Modifier
-//                    .fillMaxSize()
-//                    .background(Color(0xAA000000))
-//                    .clickable { onClicked() }
-//            ) {
-//                state.results.forEach { sentenceResult ->
-//                    val tokens = tokenizeWithPOS(sentenceResult.word)
-//                    val totalWidth = sentenceResult.bbox.x2 - sentenceResult.bbox.x1
-//                    val totalHeight = sentenceResult.bbox.y2 - sentenceResult.bbox.y1
-//
-//                    val isVertical = totalHeight > totalWidth
-//                    BoundingBoxOverlay(OCRResult(sentenceResult.word, sentenceResult.bbox)) {
-//                        Log.i("OCRScreen", sentenceResult.word)
-//                    }
-//                    if (sentenceResult.word.isEmpty()) return@forEach // Skip empty results
-//
-////                    if (isVertical) {
-////                        // --- Vertical Text Logic ---
-////                        val avgHeightPerChar = totalHeight / sentenceResult.word.length
-////                        var currentY = sentenceResult.bbox.y1
-////
-////                        tokens.forEach { token ->
-////                            val estimatedTokenHeight = token.surface.length * avgHeightPerChar
-////                            val tokenBBox = BoundingBox(
-////                                x1 = sentenceResult.bbox.x1,
-////                                x2 = sentenceResult.bbox.x2,
-////                                y1 = currentY,
-////                                y2 = currentY + estimatedTokenHeight
-////                            )
-////
-////                            BoundingBoxOverlay(OCRResult(token.surface, tokenBBox)) {
-////                                Log.i("OCRScreen", "Clicked token: ${token.surface}, Base: ${token.baseForm}")
-////                            }
-////
-////                            // ✅ CORRECT: Increment by the height of the token we just placed
-////                            currentY += estimatedTokenHeight
-////                        }
-////
-////                    } else {
-////                        // --- Horizontal Text Logic ---
-////                        val avgWidthPerChar = totalWidth / sentenceResult.word.length
-////                        var currentX = sentenceResult.bbox.x1
-////
-////                        tokens.forEach { token ->
-////                            val estimatedTokenWidth = token.surface.length * avgWidthPerChar
-////                            val tokenBBox = BoundingBox(
-////                                x1 = currentX,
-////                                x2 = currentX + estimatedTokenWidth,
-////                                y1 = sentenceResult.bbox.y1,
-////                                y2 = sentenceResult.bbox.y2
-////                            )
-////
-////                            BoundingBoxOverlay(OCRResult(token.surface, tokenBBox)) {
-////                                Log.i("OCRScreen", "Clicked token: ${token.surface}, Base: ${token.baseForm}")
-////                            }
-////
-////                            // ✅ CORRECT: Increment by the width of the token we just placed
-////                            currentX += estimatedTokenWidth
-////                        }
-////                    }
-//                }
-//            }
         }
     }
 }
@@ -419,7 +307,5 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
 @Preview
 @Composable
 fun PreviewOCRScreen() {
-//    var sudachiTokenizer : SudachiTokenizer = viewModel()
-//    OCRScreen(onClicked = {}, sudachiTokenizer)
     OCRScreen(onClicked = {}, inputImage = createBitmap(100,100))
 }

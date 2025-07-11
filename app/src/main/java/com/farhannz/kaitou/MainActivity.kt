@@ -1,29 +1,26 @@
 package com.farhannz.kaitou
 
-import android.Manifest
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
 import android.net.Uri
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.annotation.RequiresApi
-import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.farhannz.kaitou.bridges.OCRBridge.prepareInitModel
+import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.helpers.NotificationHelper
+import kotlinx.coroutines.launch
 
 
 class MainActivity : ComponentActivity() {
 
     private val LOG_TAG = MainActivity::class.simpleName
     private val logger = Logger(LOG_TAG!!)
-    private lateinit var mediaProjectionManager : MediaProjectionManager
 
     object MediaProjectionPermissionStore {
         var resultCode: Int = Int.MIN_VALUE
@@ -85,8 +82,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+//        database = DictionaryDatabase.getDatabase(this)
         enableEdgeToEdge()
+        lifecycleScope.launch {
+            val dictionaryDao = DatabaseManager.getDatabase().dictionaryDao()
+            logger.DEBUG(dictionaryDao.lookupWordsByText("たべます").toString())
+        }
         requestScreenShotPermission()
+//        prepareJmdictJson(this)
         prepareInitModel(application)
     }
 }

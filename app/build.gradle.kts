@@ -2,6 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("kotlin-kapt")
     kotlin("plugin.serialization")
 }
 
@@ -52,12 +53,27 @@ android {
 
 dependencies {
 
+    val room_version = "2.7.2"
+
     implementation("androidx.core:core-ktx:1.16.0")
     implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.material:material:1.12.0")
     implementation("androidx.constraintlayout:constraintlayout:2.2.1")
     implementation("androidx.navigation:navigation-fragment-ktx:2.9.1")
     implementation("androidx.navigation:navigation-ui-ktx:2.9.1")
+    implementation("androidx.room:room-runtime:$room_version")
+    // You already have room-common-jvm, but it's often pulled in by runtime/compiler
+    implementation("androidx.room:room-common-jvm:$room_version")
+    // Recommended for Kotlin projects for coroutines support and extensions
+    implementation("androidx.room:room-ktx:$room_version")
+
+    // IMPORTANT: Add the Room compiler dependency for annotation processing
+    // If using kotlin-kapt plugin:
+    kapt("androidx.room:room-compiler:$room_version")
+    // OR, if using com.google.devtools.ksp plugin:
+//     ksp("androidx.room:room-compiler:$room_version")
+
+
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")
@@ -88,7 +104,7 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
 //    implementation("com.worksap.nlp:sudachi:0.7.5")
-    implementation("com.google.code.gson:gson:2.11.0")
+//    implementation("com.google.code.gson:gson:2.11.0")
     implementation("org.apache.lucene:lucene-analyzers-kuromoji:8.11.0")
 
     // Optional - Included automatically by material, only add when you need
