@@ -5,7 +5,7 @@ import org.apache.lucene.analysis.ja.Token
 
 class TokenManager {
 
-    fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>, maxGram: Int = 4): List<TokenInfo> {
+    fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>?, maxGram: Int = 6): List<TokenInfo> {
         val result = mutableListOf<TokenInfo>()
         var i = 0
         while (i < tokens.size) {
@@ -18,7 +18,7 @@ class TokenManager {
                 // Handle cases where baseForm might be null/empty
                 val text = span.dropLast(1).joinToString("") { it.surface } +
                         (span.last().baseForm ?: span.last().surface)
-                if (dict.contains(text)) {
+                if (dict?.contains(text) ?: false) {
                     merged = TokenInfo(text,text,span.last().partOfSpeech)
                     i += n
                     break@outer

@@ -11,11 +11,8 @@ data class Example(
 data class VocabularyEntry(
     val word: String,
     val reading: String,
-    val romaji: String,
     val definition: String,
-    val partOfSpeech: String,
-    val jlptLevel: String,
-    val examples: ArrayList<Example>
+    val partOfSpeech: String
 )
 //
 //@Serializable

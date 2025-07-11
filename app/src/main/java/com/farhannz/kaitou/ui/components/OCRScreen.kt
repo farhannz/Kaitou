@@ -30,7 +30,9 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
+import com.farhannz.kaitou.helpers.TokenManager
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.serialization.json.Json
 import okhttp3.Call
@@ -184,8 +186,12 @@ fun WordPolygonsOverlay(
                         style = MaterialTheme.typography.headlineSmall,
                         modifier = Modifier.padding(16.dp)
                     )
-                    tokens.forEach { token ->
-                        PopUpDict(token.baseForm ?: token.surface)
+                    logger.DEBUG(tokens.toString())
+                    val merged = TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
+                    logger.DEBUG("Merged : $merged")
+                    logger.DEBUG("Merged length ${merged.size}")
+                    merged.forEach {
+                        PopUpDict(it)
                     }
                 }
             }

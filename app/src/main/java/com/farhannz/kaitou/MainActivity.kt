@@ -85,8 +85,9 @@ class MainActivity : ComponentActivity() {
 //        database = DictionaryDatabase.getDatabase(this)
         enableEdgeToEdge()
         lifecycleScope.launch {
-            val dictionaryDao = DatabaseManager.getDatabase().dictionaryDao()
-            logger.DEBUG(dictionaryDao.lookupWordsByText("たべます").toString())
+            DatabaseManager.initializeWordsCache()
+//            val dictionaryDao = DatabaseManager.getDatabase().dictionaryDao()
+//            logger.DEBUG(dictionaryDao.lookupWordsByText("たべます").toString())
         }
         requestScreenShotPermission()
 //        prepareJmdictJson(this)

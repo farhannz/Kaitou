@@ -1,11 +1,16 @@
 package com.farhannz.kaitou.data.models
 
+import android.util.Log
 import androidx.room.ColumnInfo
+import androidx.room.Database
+import androidx.room.Embedded
 import androidx.room.Entity
 import androidx.room.ForeignKey
 import androidx.room.ForeignKey.Companion.CASCADE
 import androidx.room.Index
 import androidx.room.PrimaryKey
+import androidx.room.Relation
+import com.farhannz.kaitou.helpers.DatabaseManager
 
 
 @Entity(tableName = "dictionary_info")
@@ -107,3 +112,130 @@ data class Gloss(
     val type: String?,
     val text: String
 )
+// Relations
+
+data class GlossWithLang(
+    val lang: String,
+    val text: String
+)
+
+data class SenseWithGlosses(
+    @Embedded val sense: Sense,
+    @Relation(
+        parentColumn = "sense_id",
+        entityColumn = "sense_id"
+    )
+    val glosses: List<Gloss>
+)
+
+data class WordFull(
+
+    @Embedded val word: Word,
+
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "word_id"
+    )
+    val kanji: List<Kanji>,
+
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "word_id"
+    )
+    val kana: List<Kana>,
+
+    @Relation(
+        parentColumn = "id",
+        entityColumn = "word_id",
+        entity = Sense::class
+    )
+    val senses: List<SenseWithGlosses>
+) {
+    fun String.containsAny(posList: List<String>): Boolean {
+        return posList.any { this.contains(it) }
+    }
+    fun getMostLikelyKana(token: TokenInfo): String? {
+        return kana.firstOrNull { it.text == token.surface }?.text
+            ?: kana.firstOrNull()?.text
+    }
+    fun getMostLikelyMeaning(token: TokenInfo): String? {
+        val posMapping = mapOf(
+            "名詞" to listOf("n", "pn", "vs", "adj-no"),
+            "動詞" to listOf("v1", "v5", "v5u", "v5k", "v5g", "v5s", "v5t", "v5n", "v5b", "v5m", "v5r", "vk", "vz", "vi", "vt", "vs"),
+            "助動詞" to listOf("aux", "aux-v", "aux-adj"),
+            "形容詞" to listOf("adj-i", "adj-na", "adj-no"),
+            "副詞" to listOf("adv"),
+            "助詞" to listOf("prt"),
+            "連体詞" to listOf("adj-no"),
+            "接続詞" to listOf("conj"),
+            "感動詞" to listOf("int"),
+            "記号" to listOf("sym"),
+            "接頭詞" to listOf("pref"),
+            "接尾詞" to listOf("suf"),
+            "連語" to listOf("phr"),
+            "形容詞" to listOf("adj-i", "adj-na", "adj-no"),
+            "形容詞-自立" to listOf("aux", "aux-v", "adj-i", "v5r-i")
+        )
+
+        val kuromojiPOS = token.partOfSpeech.substringBefore("-")
+        val mappedJmdictPOS = posMapping[kuromojiPOS] ?: emptyList()
+
+        val prioritized = senses.sortedBy { if ("uk" in it.sense.misc) 2 else 0 }
+
+        val matched = prioritized.firstOrNull { senseWithGloss ->
+            val rawPOS = senseWithGloss.sense.partOfSpeech
+            val parsedPOS = rawPOS
+                .removeSurrounding("[", "]")
+                .split(",")
+                .map { it.trim().removeSurrounding("\"") }
+            mappedJmdictPOS.any { it in parsedPOS }
+        }
+
+        val gloss = matched ?: prioritized.firstOrNull()
+
+        return gloss?.glosses?.firstOrNull { it.lang == "eng" && it.text.isNotBlank() }?.text
+    }
+
+    @Deprecated("The usage of getting the most likely meaning and part of speech only from string is deprecated due to bad meaning and pos result")
+    fun getMostLikelyKana(): String? {
+        // 1. Try common kana with no appliesToKanji restriction
+        kana.firstOrNull { it.common == true && it.appliesToKanji.isBlank() }?.let {
+            return it.text
+        }
+
+        // 2. Try any kana with no restriction
+        kana.firstOrNull { it.appliesToKanji.isBlank() }?.let {
+            return it.text
+        }
+
+        // 3. Fallback: first available kana
+        return kana.firstOrNull()?.text
+    }
+
+    @Deprecated("The usage of getting the most likely meaning and part of speech only from string is deprecated due to bad meaning and pos result")
+    fun getMostLikelyMeaningsWithPOS(tokenPOS: String? = null, limit: Int = 3): List<Pair<String, String>> {
+        val prioritized = senses.sortedBy { if ("uk" in it.sense.misc) 2 else 0 }
+
+        return prioritized
+            .asSequence()
+            // Filter out senses without English gloss
+            .filter { senseWithGloss ->
+                senseWithGloss.glosses.any { g -> g.lang == "eng" && g.text.isNotBlank() }
+            }
+            // If tokenPOS is provided, try to match sense POS
+            .filter { senseWithGloss ->
+                if (tokenPOS == null) true
+                else senseWithGloss.sense.partOfSpeech.any { tokenPOS.contains(it) }
+            }
+            .take(limit)
+            .map { senseWithGloss ->
+                val glosses = senseWithGloss.glosses
+                    .filter { it.lang == "eng" && it.text.isNotBlank() }
+                    .map { it.text }
+
+                val posString = senseWithGloss.sense.partOfSpeech
+                glosses.joinToString("; ") to posString
+            }
+            .toList()
+    }
+}
