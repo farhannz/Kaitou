@@ -60,9 +60,6 @@ object PredictorManager {
 
 abstract class BasePredictor {
     abstract fun initialize(context: Context, dirPath: String, fileName: String)
-
-    abstract fun preprocess(bitmap : Bitmap): PreprocessedImage
-    abstract fun postprocess(bitmap : Bitmap)
     fun copyAssetToCache(context: Context, assetFolder: String = "", assetName: String): String {
         val assetSubPath = "${assetFolder}/$assetName" // use relative asset path
         val outDir = File(context.cacheDir, "paddle")
@@ -177,15 +174,6 @@ class DetectionPredictor : BasePredictor() {
         }
         predictor = PaddlePredictor.createPaddlePredictor(config)
     }
-
-    override fun preprocess(bitmap: Bitmap): PreprocessedImage {
-        TODO("Not yet implemented")
-    }
-
-    override fun postprocess(bitmap: Bitmap) {
-        TODO("Not yet implemented")
-    }
-
     fun preprocess(bitmap: Bitmap, maxSideLen: Int): Pair<FloatArray, Size> {
         val (resized, ratios) = resizeToMultipleOf32(bitmap, maxSideLen)
         val file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")

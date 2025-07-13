@@ -35,7 +35,7 @@ sealed class OCRUIState {
     object ProcessingOCR : OCRUIState()
 
     object Failed : OCRUIState()
-    data class Done(val results: List<OCRResult>) : OCRUIState()
+    object Done : OCRUIState()
 }
 
 class MockResult {

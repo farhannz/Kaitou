@@ -289,22 +289,33 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                     boxes.add(PredictorManager.runDetection(inputImage))
                     logger.DEBUG(boxes[0].boxes.joinToString(","))
                     logger.DEBUG(boxes[0].scores.joinToString(","))
-                    sendBitmapToServer(inputImage, object : Callback {
-                        override fun onFailure(call: Call, e: IOException) {
-                            logger.ERROR("Failed: ${e.message}")
-                            ocrState = OCRUIState.Failed
-                        }
+                    val dummy_texts = mutableListOf<String>()
+                    val dummy_results = mutableListOf<List<List<Float>>>()
+                    logger.DEBUG("Result boxes : ${boxes[0].boxes.size}")
+                    boxes[0].boxes.forEachIndexed { idx, box ->
+                        dummy_texts.add("dummy_$idx")
+                        dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
+                    }
 
-                        override fun onResponse(call: Call, response: Response) {
-                            val responseText = response.body?.string()
-                            logger.DEBUG(responseText!!)
-                            val jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
-                            var response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText)
-                            zipped.addAll(response.texts.zip(response.boxes))
-                            ocrState = OCRUIState.Done(results)
-                        }
-
-                    })
+                    val dummy_zipped = dummy_texts.zip(dummy_results)
+                    zipped.addAll(dummy_zipped)
+                    ocrState = OCRUIState.Done
+//                    sendBitmapToServer(inputImage, object : Callback {
+//                        override fun onFailure(call: Call, e: IOException) {
+//                            logger.ERROR("Failed: ${e.message}")
+//                            ocrState = OCRUIState.Failed
+//                        }
+//
+//                        override fun onResponse(call: Call, response: Response) {
+//                            val responseText = response.body?.string()
+//                            logger.DEBUG(responseText!!)
+//                            val jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
+//                            var response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText)
+//                            zipped.addAll(response.texts.zip(response.boxes))
+//                            ocrState = OCRUIState.Done(results)
+//                        }
+//
+//                    })
                 }
                 CircularProgressIndicator()
             }
@@ -316,16 +327,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
         is OCRUIState.Done -> {
 //            DetectionResult.boxes = List<List<Point>>
 //            List<DetectionResult>
-            val dummy_texts = mutableListOf<String>()
-            val dummy_results = mutableListOf<List<List<Float>>>()
-            logger.DEBUG("Result boxes : ${boxes[0].boxes.size}")
-            boxes[0].boxes.forEachIndexed { idx, box ->
-                dummy_texts.add("dummy_$idx")
-                dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
-            }
-
-            val dummy_zipped = dummy_texts.zip(dummy_results)
-            WordPolygonsOverlay(dummy_zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
+            WordPolygonsOverlay(zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
         }
     }
 }
