@@ -137,5 +137,6 @@ dependencies {
     // Optional - Integration with RxJava
     implementation("androidx.compose.runtime:runtime-rxjava2")
     debugImplementation("androidx.compose.ui:ui-tooling:1.8.3")
+    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 
 }

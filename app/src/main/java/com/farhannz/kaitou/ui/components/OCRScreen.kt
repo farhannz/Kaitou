@@ -36,7 +36,6 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.paddle.PredictorManager
 import com.farhannz.kaitou.helpers.TokenManager
 import com.farhannz.kaitou.paddle.DBPostProcess
-import com.farhannz.kaitou.paddle.TextBox
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.serialization.json.Json
 import okhttp3.Call

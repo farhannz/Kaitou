@@ -20,6 +20,9 @@ import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
 
+
+// Reimplementation of PaddleX's DBPostProcess
+// https://github.com/PaddlePaddle/PaddleX/blob/30e67135ac05299cd63e0eb389ffecadad042f7f/paddlex/inference/models/text_detection/processors.py#L276
 class DBPostProcess(
     private val thresh: Double = 0.3,
     private val boxThresh: Double = 0.7,
