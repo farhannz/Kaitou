@@ -18,6 +18,7 @@ import com.farhannz.kaitou.data.dao.*
         Sense::class,
         Gloss::class
     ],
+    exportSchema = false,
     version = 1
 )
 abstract class JmdictDatabase : RoomDatabase() {

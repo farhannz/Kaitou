@@ -17,6 +17,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -32,7 +33,10 @@ import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
+import com.farhannz.kaitou.paddle.PredictorManager
 import com.farhannz.kaitou.helpers.TokenManager
+import com.farhannz.kaitou.paddle.DBPostProcess
+import com.farhannz.kaitou.paddle.TextBox
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.serialization.json.Json
 import okhttp3.Call
@@ -272,6 +276,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
 
     val captureController = rememberCaptureController()
     val zipped = remember { mutableStateListOf<Pair<String, List<List<Float>>>>() }
+    val boxes = remember {mutableListOf<DBPostProcess.DetectionResult>()}
     when (val state = ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
@@ -281,6 +286,9 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
+                    boxes.add(PredictorManager.runDetection(inputImage))
+                    logger.DEBUG(boxes[0].boxes.joinToString(","))
+                    logger.DEBUG(boxes[0].scores.joinToString(","))
                     sendBitmapToServer(inputImage, object : Callback {
                         override fun onFailure(call: Call, e: IOException) {
                             logger.ERROR("Failed: ${e.message}")
@@ -291,7 +299,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                             val responseText = response.body?.string()
                             logger.DEBUG(responseText!!)
                             val jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
-                            val response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText)
+                            var response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText)
                             zipped.addAll(response.texts.zip(response.boxes))
                             ocrState = OCRUIState.Done(results)
                         }
@@ -306,7 +314,18 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
             onClicked()
         }
         is OCRUIState.Done -> {
-            WordPolygonsOverlay(zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
+//            DetectionResult.boxes = List<List<Point>>
+//            List<DetectionResult>
+            val dummy_texts = mutableListOf<String>()
+            val dummy_results = mutableListOf<List<List<Float>>>()
+            logger.DEBUG("Result boxes : ${boxes[0].boxes.size}")
+            boxes[0].boxes.forEachIndexed { idx, box ->
+                dummy_texts.add("dummy_$idx")
+                dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
+            }
+
+            val dummy_zipped = dummy_texts.zip(dummy_results)
+            WordPolygonsOverlay(dummy_zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
         }
     }
 }

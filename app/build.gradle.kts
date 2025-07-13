@@ -2,7 +2,7 @@ plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
     id("org.jetbrains.kotlin.plugin.compose")
-    id("kotlin-kapt")
+    id("com.google.devtools.ksp")
     kotlin("plugin.serialization")
 }
 
@@ -17,10 +17,16 @@ android {
         minSdk = 31
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDirs("src/main/jniLibs")
+        }
+    }
+
     buildFeatures {
         compose = true
     }
-
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -67,13 +73,15 @@ dependencies {
     // Recommended for Kotlin projects for coroutines support and extensions
     implementation("androidx.room:room-ktx:$room_version")
 
+    implementation(files("libs/PaddlePredictor.jar"))
+    implementation(project(":opencv"))
+    implementation("com.github.micycle1:Clipper2-java:1.3.1")
+
     // IMPORTANT: Add the Room compiler dependency for annotation processing
     // If using kotlin-kapt plugin:
-    kapt("androidx.room:room-compiler:$room_version")
+//    kapt("androidx.room:room-compiler:$room_version")
     // OR, if using com.google.devtools.ksp plugin:
-//     ksp("androidx.room:room-compiler:$room_version")
-
-
+    ksp("androidx.room:room-compiler:$room_version")
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
     androidTestImplementation("androidx.test.espresso:espresso-core:3.6.1")

@@ -16,7 +16,9 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        maven { url = uri("https://jitpack.io") }
     }
 }
 rootProject.name = "Kaitou"
-include(":app")
+include(":app", ":opencv")
+project(":opencv").projectDir = file("D:/Tools/OpenCV-android-sdk/sdk")
