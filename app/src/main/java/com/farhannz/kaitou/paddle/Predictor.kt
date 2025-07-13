@@ -49,6 +49,9 @@ abstract class BasePredictor {
     open lateinit var folderPath : String
     open lateinit var predictor : PaddlePredictor
     open lateinit var config : MobileConfig
+    init {
+        System.loadLibrary("paddle_lite_jni")
+    }
     open fun initialize(context: Context, dirPath: String, fileName: String) {
         // Add this before using any Paddle Lite functions
         folderPath = dirPath
@@ -175,9 +178,6 @@ class DetectionPredictor : BasePredictor() {
         return postprocessed
     }
 
-    init {
-        System.loadLibrary("paddle_lite_jni")
-    }
     fun preprocess(bitmap: Bitmap, maxSideLen: Int): Pair<FloatArray, Size> {
         val (resized, ratios) = resizeToMultipleOf32(bitmap, maxSideLen)
         val file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")

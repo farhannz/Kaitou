@@ -8,8 +8,8 @@ import java.io.File
 import java.io.FileOutputStream
 
 
-val LOG_TAG = "PredictorUtilsNew"
-val logger = Logger(LOG_TAG)
+private val LOG_TAG = "PredictorUtilsNew"
+private val logger = Logger(LOG_TAG)
 fun resizeToMultipleOf32(bitmap: Bitmap, maxSizeLen: Int): Pair<Bitmap, FloatArray> {
     val (w, h) = bitmap.width to bitmap.height
     var ratio = 1f

@@ -36,6 +36,7 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.paddle.PredictorManager
 import com.farhannz.kaitou.helpers.TokenManager
 import com.farhannz.kaitou.paddle.DBPostProcess
+import com.farhannz.kaitou.paddle.OCRPipeline
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.serialization.json.Json
 import okhttp3.Call
@@ -285,7 +286,8 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
-                    boxes.add(PredictorManager.runDetection(inputImage))
+                    val (det, texts) = OCRPipeline.extractTexts(inputImage)
+                    boxes.add(det)
                     logger.DEBUG(boxes[0].boxes.joinToString(","))
                     logger.DEBUG(boxes[0].scores.joinToString(","))
                     val dummy_texts = mutableListOf<String>()
