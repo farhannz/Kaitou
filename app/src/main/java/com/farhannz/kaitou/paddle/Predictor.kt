@@ -1,52 +1,28 @@
 package com.farhannz.kaitou.paddle
 
+//import org.opencv.core.*
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Environment
 import android.util.Size
-import android.widget.ImageView
 import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
+import com.baidu.paddle.lite.Tensor
+import com.farhannz.kaitou.data.models.GroupedResult
+import com.farhannz.kaitou.helpers.Logger
+import org.opencv.android.Utils
+import org.opencv.core.*
+import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
 import java.util.*
-import androidx.core.graphics.scale
-import com.baidu.paddle.lite.Tensor
-import com.farhannz.kaitou.data.models.DetectionResult
-import com.farhannz.kaitou.data.models.GroupedResult
-import com.farhannz.kaitou.helpers.Logger
-import com.google.android.material.animation.ImageMatrixProperty
-import okhttp3.internal.wait
-import org.opencv.BuildConfig
-import org.opencv.android.Utils
-import org.opencv.core.Core
-import org.opencv.core.Core.norm
-import org.opencv.core.CvType
-import org.opencv.core.Mat
-import org.opencv.core.MatOfPoint
-import org.opencv.core.MatOfPoint2f
-import org.opencv.core.Point
-import org.opencv.imgcodecs.Imgcodecs
-//import org.opencv.core.*
-import org.opencv.imgproc.Imgproc
+import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.sqrt
+import androidx.core.graphics.createBitmap
+import com.farhannz.kaitou.data.models.TextLabel
+import kotlin.math.min
 
-object PredictorManager {
-    private val LOG_TAG = PredictorManager::class.simpleName
-    private val logger = Logger(LOG_TAG!!)
-    private lateinit var detection: DetectionPredictor // Text Detection Model
-    private lateinit var recognizer : BasePredictor // Text Recognizer Model
-
-    fun initialize(context: Context) {
-        detection = DetectionPredictor()
-        detection.initialize(context, "paddle", "ppocrv5_det.nb")
-    }
-
-    fun runDetection(inputImage : Bitmap): GroupedResult {
-        return detection.runInference(inputImage)
-    }
-}
+typealias CvSize = org.opencv.core.Size
 
 abstract class BasePredictor {
     open lateinit var modelName : String
@@ -88,26 +64,128 @@ abstract class BasePredictor {
 class RecognitionPredictor : BasePredictor() {
     private val LOG_TAG = DetectionPredictor::class.simpleName
     private val logger = Logger(LOG_TAG!!)
-
+    private lateinit var labelDecoder : CTCLabelDecoder
     private val input_shape = longArrayOf(3,48,320)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
+    private val maxImageWidth = 3200
 
-    fun runInference(inputImage : Bitmap) {
+    override fun initialize(context: Context, dirPath: String, fileName: String) {
+        super.initialize(context, dirPath, fileName)
+        labelDecoder = CTCLabelDecoder(context.assets.open("dict.txt").bufferedReader().readLines())
+    }
+    fun runInference(inputImage : Bitmap) : String {
+        val e2e = Date()
+        var start = Date()
 //        NTRTLabelEncode
 //        Resize image to 3,48,320
+        val resized = preprocess(inputImage)
+        val height = resized.rows()
+        val width = resized.cols()
+        val channels = resized.channels()
+        val inputTensor = predictor.getInput(0)
+        inputTensor.resize(longArrayOf(1, 3, resized.rows().toLong(), resized.width().toLong()))
+
+        // Convert Mat to float array in CHW format
+        val chw = FloatArray(3 * height * width)
+        val data = FloatArray(channels)  // temp storage
+
+        var index = 0
+        for (h in 0 until height) {
+            for (w in 0 until width) {
+                resized.get(h, w, data)
+                for (c in 0 until channels) {
+                    chw[c * height * width + h * width + w] = data[c]
+                }
+            }
+        }
+        inputTensor.setData(chw)
+        logger.DEBUG(inputTensor.shape().joinToString(","))
+        logger.INFO("[stat] Preprocess time ${Date().time - start.time}")
+
+
+        start = Date()
         val success = predictor.run()
-        if (!success) return
+        logger.INFO("[stat] Inference time ${Date().time - start.time}")
+        if (!success) return ""
+        start = Date()
+        val outputTensor = predictor.getOutput(0)
+        val texts = postprocess(outputTensor)
+        logger.INFO("[stat] Postprocess time ${Date().time - start.time}")
+        logger.INFO("[stat] End2End time ${Date().time - e2e.time}")
+
 //        CTCLabelDecode
-        return
+        return texts
     }
 
-    fun preprocess(bitmap: Bitmap) {
-        //        Resize image to 3,48,320
-        val (resized, ratios) = resizeToMultipleOf32(bitmap, 320)
+    fun preprocess(bitmap: Bitmap): Mat {
+        val inputMat = Mat()
+        Utils.bitmapToMat(bitmap, inputMat)
+
+        // Convert to RGB as Paddle expects
+        Imgproc.cvtColor(inputMat, inputMat, Imgproc.COLOR_BGR2RGB)
+
+        val maxRatio = max(bitmap.width.toFloat() / bitmap.height.toFloat(),
+            input_shape[1].toFloat() / input_shape[2].toFloat())
+
+        return resizeAndNormalizeImage(inputMat, maxRatio.toDouble())
     }
 
-    fun postprocess(preds: Tensor) {
+    fun postprocess(preds: Tensor) : String{
+        logger.DEBUG(preds.shape().joinToString(","))
+        val outputData = preds.floatData
+        val shape = preds.shape()
+        val timeSteps = shape[1].toInt()
+        val numClasses = shape[2].toInt()
+        val rawOutput = preds.floatData // Flat array of length 11 * 18385
 
+        val predIndices = IntArray(timeSteps)
+        val predProbs = FloatArray(timeSteps)
+
+        for (t in 0 until timeSteps) {
+            var maxIndex = 0
+            var maxProb = rawOutput[t * numClasses]
+
+            for (c in 1 until numClasses) {
+                val prob = rawOutput[t * numClasses + c]
+                if (prob > maxProb) {
+                    maxProb = prob
+                    maxIndex = c
+                }
+            }
+
+            predIndices[t] = maxIndex
+            predProbs[t] = maxProb
+        }
+        val results = labelDecoder.decode(listOf(predIndices),listOf(predProbs))
+//        labelDecoder.decode()
+        return results.joinToString("")
+    }
+    fun resizeAndNormalizeImage(img: Mat, maxWhRatio: Double): Mat {
+        val imgC = input_shape[0].toInt()
+        val imgH = input_shape[1].toInt()
+        val imgW = input_shape[2].toInt()  // ✅ fixed width, not dynamic
+
+        // Resize image to fit height
+        val h = img.rows()
+        val w = img.cols()
+        val ratio = w.toDouble() / h
+        val resizedW = min(ceil(imgH * ratio).toInt(), imgW)
+
+        val resizedImage = Mat()
+        Imgproc.resize(img, resizedImage, CvSize(resizedW.toDouble(), imgH.toDouble()))
+
+        // Normalize
+        val normalizedImage = Mat()
+        resizedImage.convertTo(normalizedImage, CvType.CV_32FC3, 1.0 / 255)
+        Core.subtract(normalizedImage, Scalar(0.5, 0.5, 0.5), normalizedImage)
+        Core.divide(normalizedImage, Scalar(0.5, 0.5, 0.5), normalizedImage)
+
+        // Pad to model width
+        val paddingIm = Mat.zeros(imgH, imgW, CvType.CV_32FC3)
+        val roi = paddingIm.submat(Rect(0, 0, resizedW, imgH))
+        normalizedImage.copyTo(roi)
+
+        return paddingIm
     }
 }
 
@@ -231,36 +309,4 @@ class DetectionPredictor : BasePredictor() {
     }
 }
 
-private fun DetectionPredictor.cropFromBox(image: Mat, box: List<Point>, bool: Boolean): Mat {
-    fun norm(p1: Point, p2: Point): Double {
-        val dx = p1.x - p2.x
-        val dy = p1.y - p2.y
-        return sqrt(dx * dx + dy * dy)
-    }
 
-    if (box.size != 4) throw IllegalArgumentException("Box must have 4 points")
-
-    val widthA = norm(box[2], box[3])
-    val widthB = norm(box[1], box[0])
-    val maxWidth = max(widthA, widthB).toInt()
-
-    val heightA = norm(box[1], box[2])
-    val heightB = norm(box[0], box[3])
-    val maxHeight = max(heightA, heightB).toInt()
-
-    val dst = listOf(
-        Point(0.0, 0.0),
-        Point(maxWidth - 1.0, 0.0),
-        Point(maxWidth - 1.0, maxHeight - 1.0),
-        Point(0.0, maxHeight - 1.0)
-    )
-
-    val srcMat = MatOfPoint2f(*box.toTypedArray())
-    val dstMat = MatOfPoint2f(*dst.toTypedArray())
-
-    val transform = Imgproc.getPerspectiveTransform(srcMat, dstMat)
-    val warped = Mat()
-    Imgproc.warpPerspective(image, warped, transform, org.opencv.core.Size(maxWidth.toDouble(), maxHeight.toDouble()))
-
-    return warped
-}

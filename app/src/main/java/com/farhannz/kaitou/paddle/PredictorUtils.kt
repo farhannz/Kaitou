@@ -4,9 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import com.farhannz.kaitou.helpers.Logger
 import androidx.core.graphics.scale
+import org.opencv.core.Mat
+import org.opencv.core.MatOfPoint2f
+import org.opencv.core.Point
+import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
-
+import kotlin.math.max
+import kotlin.math.sqrt
 
 private val LOG_TAG = "PredictorUtilsNew"
 private val logger = Logger(LOG_TAG)
@@ -42,6 +47,40 @@ fun resizeToMultipleOf32(bitmap: Bitmap, maxSizeLen: Int): Pair<Bitmap, FloatArr
     return Pair(resized, ratioHW)
 }
 
+
+fun cropFromBox(image: Mat, box: List<Point>): Mat {
+    fun norm(p1: Point, p2: Point): Double {
+        val dx = p1.x - p2.x
+        val dy = p1.y - p2.y
+        return sqrt(dx * dx + dy * dy)
+    }
+
+    if (box.size != 4) throw IllegalArgumentException("Box must have 4 points")
+
+    val widthA = norm(box[2], box[3])
+    val widthB = norm(box[1], box[0])
+    val maxWidth = max(widthA, widthB).toInt()
+
+    val heightA = norm(box[1], box[2])
+    val heightB = norm(box[0], box[3])
+    val maxHeight = max(heightA, heightB).toInt()
+
+    val dst = listOf(
+        Point(0.0, 0.0),
+        Point(maxWidth - 1.0, 0.0),
+        Point(maxWidth - 1.0, maxHeight - 1.0),
+        Point(0.0, maxHeight - 1.0)
+    )
+
+    val srcMat = MatOfPoint2f(*box.toTypedArray())
+    val dstMat = MatOfPoint2f(*dst.toTypedArray())
+
+    val transform = Imgproc.getPerspectiveTransform(srcMat, dstMat)
+    val warped = Mat()
+    Imgproc.warpPerspective(image, warped, transform, CvSize(maxWidth.toDouble(), maxHeight.toDouble()))
+
+    return warped
+}
 fun bitmapToFloatArray(bitmap: Bitmap,
                        normalize: Boolean,
                        mean: FloatArray = floatArrayOf(0.485f, 0.456f, 0.406f),

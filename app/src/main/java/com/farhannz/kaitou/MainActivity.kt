@@ -15,7 +15,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.paddle.PredictorManager
+import com.farhannz.kaitou.paddle.OCRPipeline
 import kotlinx.coroutines.launch
 import org.opencv.android.OpenCVLoader
 
@@ -113,7 +113,7 @@ class MainActivity : ComponentActivity() {
         }
 //        database = DictionaryDatabase.getDatabase(this)
         enableEdgeToEdge()
-        PredictorManager.initialize(this)
+        OCRPipeline.initialize(this)
         lifecycleScope.launch {
 //            try {
 //                System.loadLibrary("paddle_lite_jni")

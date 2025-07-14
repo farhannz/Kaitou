@@ -279,6 +279,9 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
             ) {
                 LaunchedEffect(ocrState) {
                     val (dets, texts) = OCRPipeline.extractTexts(inputImage)
+                    texts.forEach {
+                        logger.DEBUG(it)
+                    }
                     val (det, grouped) = dets
                     boxes.add(det)
                     logger.DEBUG(boxes[0].boxes.joinToString(","))
@@ -286,10 +289,14 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                     val dummy_texts = mutableListOf<String>()
                     val dummy_results = mutableListOf<List<List<Float>>>()
                     logger.DEBUG("Result boxes : ${boxes[0].boxes.size}")
-                    boxes[0].boxes.forEachIndexed { idx, box ->
+                    grouped.forEachIndexed { idx, box ->
                         dummy_texts.add("dummy_$idx")
                         dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
                     }
+//                    boxes[0].boxes.forEachIndexed { idx, box ->
+//                        dummy_texts.add("dummy_$idx")
+//                        dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
+//                    }
 
                     val dummy_zipped = dummy_texts.zip(dummy_results)
                     zipped.addAll(dummy_zipped)
