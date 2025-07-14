@@ -62,7 +62,7 @@ abstract class BasePredictor {
 
 
 class RecognitionPredictor : BasePredictor() {
-    private val LOG_TAG = DetectionPredictor::class.simpleName
+    private val LOG_TAG = RecognitionPredictor::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private lateinit var labelDecoder : CTCLabelDecoder
     private val input_shape = longArrayOf(3,48,320)
@@ -73,48 +73,100 @@ class RecognitionPredictor : BasePredictor() {
         super.initialize(context, dirPath, fileName)
         labelDecoder = CTCLabelDecoder(context.assets.open("dict.txt").bufferedReader().readLines())
     }
-    fun runInference(inputImage : Bitmap) : String {
+
+    fun runBatchInference(inputImages: List<Bitmap>): List<String> {
+        if (inputImages.isEmpty()) return emptyList()
+
         val e2e = Date()
         var start = Date()
-//        NTRTLabelEncode
-//        Resize image to 3,48,320
-        val resized = preprocess(inputImage)
-        val height = resized.rows()
-        val width = resized.cols()
-        val channels = resized.channels()
+
+        // Preprocess all images
+        val preprocessedImages = inputImages.map { preprocess(it) }
+        val batchSize = inputImages.size
+        val height = preprocessedImages[0].rows()
+        val width = preprocessedImages[0].cols()
+        val channels = preprocessedImages[0].channels()
+
+        // Setup batch input tensor
         val inputTensor = predictor.getInput(0)
-        inputTensor.resize(longArrayOf(1, 3, resized.rows().toLong(), resized.width().toLong()))
+        inputTensor.resize(longArrayOf(batchSize.toLong(), 3, height.toLong(), width.toLong()))
 
-        // Convert Mat to float array in CHW format
-        val chw = FloatArray(3 * height * width)
-        val data = FloatArray(channels)  // temp storage
+        // Convert all images to CHW format
+        val batchData = FloatArray(batchSize * 3 * height * width)
+        val tempData = FloatArray(channels)
 
-        var index = 0
-        for (h in 0 until height) {
-            for (w in 0 until width) {
-                resized.get(h, w, data)
-                for (c in 0 until channels) {
-                    chw[c * height * width + h * width + w] = data[c]
+        for (batchIdx in preprocessedImages.indices) {
+            val resized = preprocessedImages[batchIdx]
+            val batchOffset = batchIdx * 3 * height * width
+
+            for (h in 0 until height) {
+                for (w in 0 until width) {
+                    resized.get(h, w, tempData)
+                    for (c in 0 until channels) {
+                        batchData[batchOffset + c * height * width + h * width + w] = tempData[c]
+                    }
                 }
             }
         }
-        inputTensor.setData(chw)
-        logger.DEBUG(inputTensor.shape().joinToString(","))
-        logger.INFO("[stat] Preprocess time ${Date().time - start.time}")
 
+        inputTensor.setData(batchData)
 
+        // Run batch inference
         start = Date()
         val success = predictor.run()
-        logger.INFO("[stat] Inference time ${Date().time - start.time}")
-        if (!success) return ""
+        if (!success) return List(batchSize) { "" }
+
+        // Postprocess batch results
         start = Date()
         val outputTensor = predictor.getOutput(0)
-        val texts = postprocess(outputTensor)
-        logger.INFO("[stat] Postprocess time ${Date().time - start.time}")
-        logger.INFO("[stat] End2End time ${Date().time - e2e.time}")
+        val texts = postprocessBatch(outputTensor, batchSize)
 
-//        CTCLabelDecode
         return texts
+    }
+
+    fun runInference(inputImage: Bitmap): String {
+        return runBatchInference(listOf(inputImage))[0]
+    }
+
+    private fun postprocessBatch(preds: Tensor, batchSize: Int): List<String> {
+        val shape = preds.shape()
+        val timeSteps = shape[1].toInt()
+        val numClasses = shape[2].toInt()
+        val rawOutput = preds.floatData
+
+        val results = mutableListOf<String>()
+
+        // Pre-allocate arrays for better memory performance
+        val predIndices = IntArray(timeSteps)
+        val predProbs = FloatArray(timeSteps)
+
+        for (batchIdx in 0 until batchSize) {
+            val batchOffset = batchIdx * timeSteps * numClasses
+
+            // Optimized argmax - single pass through time steps
+            for (t in 0 until timeSteps) {
+                val timeOffset = batchOffset + t * numClasses
+                var maxIndex = 0
+                var maxProb = rawOutput[timeOffset]
+
+                // Unrolled loop for better performance
+                for (c in 1 until numClasses) {
+                    val prob = rawOutput[timeOffset + c]
+                    if (prob > maxProb) {
+                        maxProb = prob
+                        maxIndex = c
+                    }
+                }
+
+                predIndices[t] = maxIndex
+                predProbs[t] = maxProb
+            }
+
+            val decoded = labelDecoder.decode(listOf(predIndices), listOf(predProbs))
+            results.add(decoded.joinToString("") { it.first })
+        }
+
+        return results
     }
 
     fun preprocess(bitmap: Bitmap): Mat {
@@ -131,12 +183,11 @@ class RecognitionPredictor : BasePredictor() {
     }
 
     fun postprocess(preds: Tensor) : String{
-        logger.DEBUG(preds.shape().joinToString(","))
         val outputData = preds.floatData
         val shape = preds.shape()
         val timeSteps = shape[1].toInt()
         val numClasses = shape[2].toInt()
-        val rawOutput = preds.floatData // Flat array of length 11 * 18385
+        val rawOutput = preds.floatData
 
         val predIndices = IntArray(timeSteps)
         val predProbs = FloatArray(timeSteps)
@@ -157,13 +208,13 @@ class RecognitionPredictor : BasePredictor() {
             predProbs[t] = maxProb
         }
         val results = labelDecoder.decode(listOf(predIndices),listOf(predProbs))
-//        labelDecoder.decode()
-        return results.joinToString("")
+        return results.joinToString("") { it.first }
     }
+
     fun resizeAndNormalizeImage(img: Mat, maxWhRatio: Double): Mat {
         val imgC = input_shape[0].toInt()
         val imgH = input_shape[1].toInt()
-        val imgW = input_shape[2].toInt()  // ✅ fixed width, not dynamic
+        val imgW = input_shape[2].toInt()
 
         // Resize image to fit height
         val h = img.rows()
@@ -189,7 +240,6 @@ class RecognitionPredictor : BasePredictor() {
     }
 }
 
-
 // Reimplementation of c++ from
 // https://github.com/PaddlePaddle/Paddle-Lite-Demo/blob/develop/ocr/android/app/cxx/ppocr_demo/app/src/main/cpp/det_process.cc
 
@@ -207,13 +257,13 @@ class DetectionPredictor : BasePredictor() {
         val (preprocessed, resized) = preprocess(inputImage, input_shape.maxOrNull()?.toInt() ?:0)
         var end = Date()
         var inferenceTime = (end.time - start.time)
-        logger.INFO("[stat] Preprocessing time $inferenceTime ms");
+//        logger.INFO("[stat] Preprocessing time $inferenceTime ms");
 
 
         val inputTensor = predictor.getInput(0)
         inputTensor.resize(longArrayOf(1, 3, resized.width.toLong(), resized.height.toLong()))
         val inputShape = inputTensor.shape()  // Returns LongArray
-        logger.DEBUG("Input shape: ${inputShape.joinToString(",")}")
+//        logger.DEBUG("Input shape: ${inputShape.joinToString(",")}")
 
         val requiredSize = inputShape.fold(1L, Long::times).toInt()
         if (preprocessed.size != requiredSize) {
@@ -236,7 +286,7 @@ class DetectionPredictor : BasePredictor() {
         }
         end = Date()
         inferenceTime = (end.time - start.time)
-        logger.INFO("[stat] Inference time $inferenceTime ms");
+//        logger.INFO("[stat] Inference time $inferenceTime ms");
 
         val detConfig = mapOf(
             "det_db_thresh" to 0.3
@@ -245,8 +295,8 @@ class DetectionPredictor : BasePredictor() {
         val postprocessed = postprocess(inputImage, detConfig,true)
         end = Date()
         inferenceTime = (end.time - start.time)
-        logger.INFO("[stat] Postprocessing time $inferenceTime ms");
-        logger.INFO("[stat] End to end time ${Date().time - end2end.time} ms");
+//        logger.INFO("[stat] Postprocessing time $inferenceTime ms");
+//        logger.INFO("[stat] End to end time ${Date().time - end2end.time} ms");
 
 //        ONLY FOR DEBUGGING
 //        Uncomment this to visualize the cropped polygons result

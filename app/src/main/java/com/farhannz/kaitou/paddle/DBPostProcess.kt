@@ -144,10 +144,10 @@ class DBPostProcess(
         }
         if (groupedBoxes) {
             val grouped = groupOverlappingBoxes(boxes.boxes)
-            grouped.forEachIndexed { index, box ->
-                logger.DEBUG("Grouped $index")
-                logger.DEBUG(box.joinToString(","))
-            }
+//            grouped.forEachIndexed { index, box ->
+//                logger.DEBUG("Grouped $index")
+//                logger.DEBUG(box.joinToString(","))
+//            }
             return GroupedResult(boxes, grouped)
         }
         return GroupedResult(boxes, emptyList())

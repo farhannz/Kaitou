@@ -34,6 +34,8 @@ import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenManager
 import com.farhannz.kaitou.paddle.OCRPipeline
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
@@ -278,45 +280,27 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
-                    val (dets, texts) = OCRPipeline.extractTexts(inputImage)
-                    texts.forEach {
-                        logger.DEBUG(it)
-                    }
-                    val (det, grouped) = dets
-                    boxes.add(det)
-                    logger.DEBUG(boxes[0].boxes.joinToString(","))
-                    logger.DEBUG(boxes[0].scores.joinToString(","))
-                    val dummy_texts = mutableListOf<String>()
-                    val dummy_results = mutableListOf<List<List<Float>>>()
-                    logger.DEBUG("Result boxes : ${boxes[0].boxes.size}")
-                    grouped.forEachIndexed { idx, box ->
-                        dummy_texts.add("dummy_$idx")
-                        dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
-                    }
-//                    boxes[0].boxes.forEachIndexed { idx, box ->
-//                        dummy_texts.add("dummy_$idx")
-//                        dummy_results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
-//                    }
+                    withContext(Dispatchers.Default) {
+                        val (dets, texts) = OCRPipeline.extractTexts(inputImage)
 
-                    val dummy_zipped = dummy_texts.zip(dummy_results)
-                    zipped.addAll(dummy_zipped)
-                    ocrState = OCRUIState.Done
-//                    sendBitmapToServer(inputImage, object : Callback {
-//                        override fun onFailure(call: Call, e: IOException) {
-//                            logger.ERROR("Failed: ${e.message}")
-//                            ocrState = OCRUIState.Failed
-//                        }
-//
-//                        override fun onResponse(call: Call, response: Response) {
-//                            val responseText = response.body?.string()
-//                            logger.DEBUG(responseText!!)
-//                            val jsonIgnoreUnknown = Json {ignoreUnknownKeys = true}
-//                            var response : PpOcrResponse = jsonIgnoreUnknown.decodeFromString<PpOcrResponse>(responseText)
-//                            zipped.addAll(response.texts.zip(response.boxes))
-//                            ocrState = OCRUIState.Done(results)
-//                        }
-//
-//                    })
+                        withContext(Dispatchers.Main) {
+                            // Update UI state
+                            texts.forEach { logger.DEBUG(it) }
+                            val (det, grouped) = dets
+                            boxes.add(det)
+
+                            val _texts = mutableListOf<String>()
+                            val _results = mutableListOf<List<List<Float>>>()
+
+                            det.boxes.forEachIndexed { idx, box ->
+                                _texts.add(texts[idx])
+                                _results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
+                            }
+
+                            zipped.addAll(_texts.zip(_results))
+                            ocrState = OCRUIState.Done
+                        }
+                    }
                 }
                 CircularProgressIndicator()
             }
