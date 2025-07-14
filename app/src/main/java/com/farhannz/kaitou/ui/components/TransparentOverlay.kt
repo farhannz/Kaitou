@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Camera
@@ -45,33 +46,54 @@ fun TransparentOverlay(onCaptureClick: () -> Unit) {
 
 @Composable
 fun DraggableOverlayContent(onCaptureClick: () -> Unit, onDrag: (Float, Float) -> Unit, isVisible : Boolean) {
-    // These offsets are relative to the *ComposeView itself*.
-    // Since the ComposeView is now WRAP_CONTENT, and we're moving the entire window
-    // with onDrag, these internal offsets can largely be removed, or used for
-    // internal content positioning if needed. For a simple FAB, it's not needed.
+    val showMenu = remember { mutableStateOf(false) }
+    Box {
+        FloatingActionButton(
+            onClick = onCaptureClick,
+            containerColor = Color(0xAA000000),
+            contentColor = Color.White,
+            elevation = FloatingActionButtonDefaults.elevation(0.dp),
+            modifier = Modifier
+                .size(60.dp) // Give it a specific size
+                .background(Color.Transparent) // Ensure the FAB background doesn't interfere
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        // Pass the drag amount up to the Service to update window position
+                        onDrag(dragAmount.x, dragAmount.y)
 
-    // Let's remove the internal offsetX/Y state from here and rely on onDrag
-    // updating the WindowManager.
-    FloatingActionButton(
-        onClick = onCaptureClick,
-        containerColor = Color(0xAA000000),
-        contentColor = Color.White,
-        modifier = Modifier
-            .size(60.dp) // Give it a specific size
-            .background(Color.Transparent) // Ensure the FAB background doesn't interfere
-            .pointerInput(Unit) {
-                detectDragGestures { change, dragAmount ->
-                    change.consume()
-                    // Pass the drag amount up to the Service to update window position
-                    onDrag(dragAmount.x, dragAmount.y)
+                    }
+                    detectTapGestures(onLongPress = {
+                        showMenu.value = true
+                    })
                 }
-            }.graphicsLayer {
-                alpha = if (isVisible) 1f else 0f
-            }.then(
-                if (isVisible) Modifier.clickable(onClick = onCaptureClick)
-                else Modifier
-            ),
-    ) {
-        Icon(Icons.Default.Camera, contentDescription = "Capture")
+                .graphicsLayer {
+                    alpha = if (isVisible) 1f else 0f
+                }
+                .then(
+                    if (isVisible) Modifier.clickable(onClick = onCaptureClick)
+                    else Modifier
+                ),
+        ) {
+            Icon(Icons.Default.Camera, contentDescription = "Capture")
+        }
+
+        DropdownMenu(
+            expanded = showMenu.value,
+            onDismissRequest = { showMenu.value = false }
+        ) {
+            DropdownMenuItem(
+                text = { Text("Reset Position") },
+                onClick = {
+                    showMenu.value = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("Hide Button") },
+                onClick = {
+                    showMenu.value = false
+                }
+            )
+        }
     }
 }

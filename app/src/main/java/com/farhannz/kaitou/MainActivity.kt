@@ -9,6 +9,8 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.farhannz.kaitou.helpers.DatabaseManager
@@ -21,8 +23,8 @@ class MainActivity : ComponentActivity() {
 
     private val LOG_TAG = MainActivity::class.simpleName
     private val logger = Logger(LOG_TAG!!)
-    private var overlayGranted = false
-    private var screenshotGranted = false
+    private var overlayGranted =  mutableStateOf(false)
+    private var screenshotGranted =  mutableStateOf(false)
 
     object MediaProjectionPermissionStore {
         var resultCode: Int = Int.MIN_VALUE
@@ -30,7 +32,7 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun tryMoveToBackground() {
-        if (overlayGranted && screenshotGranted) {
+        if (overlayGranted.value && screenshotGranted.value) {
             moveTaskToBack(true)
         }
     }
@@ -40,7 +42,7 @@ class MainActivity : ComponentActivity() {
     ) {
         if (Settings.canDrawOverlays(this)) {
             startOverlayService()
-            overlayGranted = true
+            overlayGranted.value = true
             tryMoveToBackground()
         } else {
             Toast.makeText(this, "Overlay permission is required!", Toast.LENGTH_SHORT).show()
@@ -53,7 +55,7 @@ class MainActivity : ComponentActivity() {
             overlayPermissionLauncher.launch(intent)
         } else {
             startOverlayService()
-            overlayGranted = true
+            overlayGranted.value = true
             tryMoveToBackground()
         }
     }
@@ -79,9 +81,8 @@ class MainActivity : ComponentActivity() {
                 MediaProjectionPermissionStore.dataIntent = result.data
                 MediaProjectionPermissionStore.resultCode = result.resultCode
             }
-            screenshotGranted = true
+            screenshotGranted.value = true
             ContextCompat.startForegroundService(this, intent)
-            requestOverlayPermission()
         } else {
             // Permission denied
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
@@ -95,10 +96,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        if (Settings.canDrawOverlays(this) && !overlayGranted) {
-            overlayGranted = true
+        if (Settings.canDrawOverlays(this) && !overlayGranted.value) {
+            overlayGranted.value = true
             startOverlayService()
             tryMoveToBackground()
+        } else {
+            requestOverlayPermission()
         }
     }
     override fun onCreate(savedInstanceState: Bundle?) {
