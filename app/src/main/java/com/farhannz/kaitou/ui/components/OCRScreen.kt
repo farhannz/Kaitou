@@ -17,7 +17,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.snapshots.SnapshotStateList
 import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -33,25 +32,18 @@ import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.paddle.PredictorManager
 import com.farhannz.kaitou.helpers.TokenManager
-import com.farhannz.kaitou.paddle.DBPostProcess
 import com.farhannz.kaitou.paddle.OCRPipeline
-import dev.shreyaspatil.capturable.controller.rememberCaptureController
-import kotlinx.serialization.json.Json
-import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
-import okhttp3.Response
 import org.apache.lucene.analysis.ja.JapaneseTokenizer
 import org.apache.lucene.analysis.ja.tokenattributes.*
 import org.apache.lucene.analysis.tokenattributes.*
 import java.io.ByteArrayOutputStream
-import java.io.IOException
 import java.io.StringReader
 
 const val LOG_TAG = "OCRScreen"
@@ -274,15 +266,15 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
 //        )
     }
 
-    val captureController = rememberCaptureController()
     val zipped = remember { mutableStateListOf<Pair<String, List<List<Float>>>>() }
-    val boxes = remember {mutableListOf<DBPostProcess.DetectionResult>()}
+    val boxes = remember {mutableListOf<DetectionResult>()}
     when (val state = ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x88000000)),
+                    .background(Color(0x88000000))
+                    .clickable(onClick = onClicked),
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
@@ -326,8 +318,6 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
             onClicked()
         }
         is OCRUIState.Done -> {
-//            DetectionResult.boxes = List<List<Point>>
-//            List<DetectionResult>
             WordPolygonsOverlay(zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
         }
     }

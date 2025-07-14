@@ -16,26 +16,32 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.paddle.PredictorManager
 import kotlinx.coroutines.launch
 import org.opencv.android.OpenCVLoader
-import org.opencv.core.CvType
-import org.opencv.core.Mat
-import org.opencv.core.Point
-import org.opencv.core.Scalar
-import org.opencv.imgproc.Imgproc
 
 class MainActivity : ComponentActivity() {
 
     private val LOG_TAG = MainActivity::class.simpleName
     private val logger = Logger(LOG_TAG!!)
+    private var overlayGranted = false
+    private var screenshotGranted = false
 
     object MediaProjectionPermissionStore {
         var resultCode: Int = Int.MIN_VALUE
         var dataIntent: Intent? = null
     }
+
+    private fun tryMoveToBackground() {
+        if (overlayGranted && screenshotGranted) {
+            moveTaskToBack(true)
+        }
+    }
+
     private val overlayPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         if (Settings.canDrawOverlays(this)) {
             startOverlayService()
+            overlayGranted = true
+            tryMoveToBackground()
         } else {
             Toast.makeText(this, "Overlay permission is required!", Toast.LENGTH_SHORT).show()
         }
@@ -47,13 +53,15 @@ class MainActivity : ComponentActivity() {
             overlayPermissionLauncher.launch(intent)
         } else {
             startOverlayService()
+            overlayGranted = true
+            tryMoveToBackground()
         }
     }
 
     private fun startOverlayService() {
         val intent = Intent(this, OverlayService::class.java)
         ContextCompat.startForegroundService(this, intent)
-        moveTaskToBack(true)
+//        moveTaskToBack(true)
     }
 
 
@@ -70,10 +78,10 @@ class MainActivity : ComponentActivity() {
                 putExtra("data", result.data)
                 MediaProjectionPermissionStore.dataIntent = result.data
                 MediaProjectionPermissionStore.resultCode = result.resultCode
-                requestOverlayPermission()
             }
+            screenshotGranted = true
             ContextCompat.startForegroundService(this, intent)
-            moveTaskToBack(true)
+            requestOverlayPermission()
         } else {
             // Permission denied
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
@@ -85,6 +93,14 @@ class MainActivity : ComponentActivity() {
         screenshotPermissionLauncher.launch(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        if (Settings.canDrawOverlays(this) && !overlayGranted) {
+            overlayGranted = true
+            startOverlayService()
+            tryMoveToBackground()
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         if (OpenCVLoader.initLocal()) {

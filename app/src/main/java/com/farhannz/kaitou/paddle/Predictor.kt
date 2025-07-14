@@ -12,10 +12,13 @@ import java.io.FileOutputStream
 import java.util.*
 import androidx.core.graphics.scale
 import com.baidu.paddle.lite.Tensor
+import com.farhannz.kaitou.data.models.DetectionResult
 import com.farhannz.kaitou.helpers.Logger
+import com.google.android.material.animation.ImageMatrixProperty
 import okhttp3.internal.wait
 import org.opencv.BuildConfig
 import org.opencv.android.Utils
+import org.opencv.core.Core
 import org.opencv.core.Core.norm
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -39,7 +42,7 @@ object PredictorManager {
         detection.initialize(context, "paddle", "ppocrv5_det.nb")
     }
 
-    fun runDetection(inputImage : Bitmap): DBPostProcess.DetectionResult {
+    fun runDetection(inputImage : Bitmap): DetectionResult {
         return detection.runInference(inputImage)
     }
 }
@@ -59,6 +62,7 @@ abstract class BasePredictor {
         val absolutePath = copyAssetToCache(context, folderPath, modelName)
         config = MobileConfig().apply {
             modelFromFile = absolutePath
+            threads = 1
         }
         predictor = PaddlePredictor.createPaddlePredictor(config)
     }
@@ -84,7 +88,7 @@ class RecognitionPredictor : BasePredictor() {
     private val LOG_TAG = DetectionPredictor::class.simpleName
     private val logger = Logger(LOG_TAG!!)
 
-    private val input_shape = longArrayOf(3,960,960)
+    private val input_shape = longArrayOf(3,48,320)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
 
     fun runInference(inputImage : Bitmap) {
@@ -97,7 +101,8 @@ class RecognitionPredictor : BasePredictor() {
     }
 
     fun preprocess(bitmap: Bitmap) {
-
+        //        Resize image to 3,48,320
+        val (resized, ratios) = resizeToMultipleOf32(bitmap, 320)
     }
 
     fun postprocess(preds: Tensor) {
@@ -114,9 +119,9 @@ class DetectionPredictor : BasePredictor() {
     private val logger = Logger(LOG_TAG!!)
 
     private val input_shape = longArrayOf(3,960,960)
-    private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25)
+    private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 1.25)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
-    fun runInference(inputImage : Bitmap): DBPostProcess.DetectionResult {
+    fun runInference(inputImage : Bitmap): DetectionResult {
         val end2end = Date()
         logger.INFO("Running inference")
         var start = Date()
@@ -171,6 +176,10 @@ class DetectionPredictor : BasePredictor() {
 //                val mat = Mat()
 //                Utils.bitmapToMat(inputImage, mat)
 //                val cropped = cropFromBox(mat, box, true)
+//                val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.5f
+//                if (isVertical) {
+//                    Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
+//                }
 //                val filePath = File(Environment.getExternalStorageDirectory(), "Download/PPOCR/cropped_$index.png").absolutePath
 //                Imgcodecs.imwrite(filePath, cropped)
 //            }
@@ -180,8 +189,8 @@ class DetectionPredictor : BasePredictor() {
 
     fun preprocess(bitmap: Bitmap, maxSideLen: Int): Pair<FloatArray, Size> {
         val (resized, ratios) = resizeToMultipleOf32(bitmap, maxSideLen)
-        val file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")
-        saveBitmapToFileDirectly(resized,file.absolutePath)
+//        val file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")
+//        saveBitmapToFileDirectly(resized,file.absolutePath)
         ratioHW = ratios
 
         // Convert to float array with normalization
@@ -195,7 +204,7 @@ class DetectionPredictor : BasePredictor() {
         originalBitmap: Bitmap,
         config: Map<String, Double>,
         useDilate: Boolean = false
-    ): DBPostProcess.DetectionResult {
+    ): DetectionResult {
         val outputTensor = predictor.getOutput(0)
         val width = outputTensor.shape()[2]
         val height = outputTensor.shape()[3]

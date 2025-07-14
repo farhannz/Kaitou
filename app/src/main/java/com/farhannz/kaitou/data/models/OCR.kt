@@ -5,6 +5,7 @@ import kotlinx.coroutines.delay
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.opencv.core.Point
 
 
 data class BoundingBox (
@@ -37,6 +38,17 @@ sealed class OCRUIState {
     object Failed : OCRUIState()
     object Done : OCRUIState()
 }
+
+
+//Detection Result = [
+//  [Point(x,y), Point(x,y), Point(x,y), Point(x,y)],
+//  [Point(x,y), Point(x,y), Point(x,y), Point(x,y)],
+//  [Point(x,y), Point(x,y), Point(x,y), Point(x,y)],
+//  [Point(x,y), Point(x,y), Point(x,y), Point(x,y)]
+// ]
+
+data class DetectionResult(val boxes: List<List<Point>>, val scores: List<Double>)
+
 
 class MockResult {
 

@@ -1,62 +1,26 @@
 package com.farhannz.kaitou
 
-import android.R
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.app.Service
-import android.content.BroadcastReceiver
 import android.content.ComponentName
-import android.content.ContentValues
-import android.content.Context
 import android.content.Intent
-import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.graphics.Bitmap
-//import android.graphics.Color
 import android.graphics.PixelFormat
-import android.hardware.display.*
-import android.media.ImageReader
 import android.media.projection.*
-import android.os.Binder
-import android.os.Build
-import android.os.Environment
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
-import android.provider.MediaStore
-import android.util.Log
 import android.view.Gravity
-import android.view.View
 import android.view.WindowManager
-import android.widget.Toast
-import androidx.annotation.RequiresApi
-import androidx.compose.foundation.layout.Column
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.ExperimentalComposeApi
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.platform.ComposeView
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.*
 import androidx.savedstate.*
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
-import com.farhannz.kaitou.helpers.ScreenshotPermissionActivity
 import com.farhannz.kaitou.ui.components.DraggableOverlayContent
 import com.farhannz.kaitou.ui.components.OCRScreen
-import dev.shreyaspatil.capturable.capturable
-import dev.shreyaspatil.capturable.controller.CaptureController
-import dev.shreyaspatil.capturable.controller.rememberCaptureController
-import kotlinx.coroutines.CoroutineScope
-//import com.farhannz.kaitou.ui.viewmodels.SudachiTokenizer
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 
@@ -69,8 +33,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     private val lifecycleRegistry = LifecycleRegistry(this)
     private var isBound = false
-    private var screenshotServiceBinder: ScreenshotService.ScreenshotServiceBinder? = null
-    private var pendingCaptureRequest = false
+    private val isButtonVisibleState = mutableStateOf(true)
 
     private lateinit var mediaProjectionManager: MediaProjectionManager
 
@@ -79,8 +42,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private var currentY = 100
     private var ocrScreen: ComposeView? = null
 
-
-//    private lateinit var sudachiTokenizer: SudachiTokenizer
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
@@ -98,6 +59,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
                 logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
                 // Do OCR or show it
                 showOCRScreen(bitmap)
+                isButtonVisibleState.value = true
             }
 //            // Trigger screenshot
             screenshotService.rc = MainActivity.MediaProjectionPermissionStore.resultCode
@@ -151,6 +113,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         windowManager.addView(ocrScreen,layoutParams)
     }
     private fun captureScreenshot() {
+        isButtonVisibleState.value = false
         if (isBound) {
             unbindService(connection)
         }
@@ -190,12 +153,14 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         layoutParams.y = currentY
         composeView = createComposeView {
             DraggableOverlayContent(onCaptureClick = { captureScreenshot() }, onDrag = { dx, dy ->
-                currentX -= dx.roundToInt()
-                currentY -= dy.roundToInt()
-                layoutParams.x = currentX
-                layoutParams.y = currentY
-                windowManager.updateViewLayout(composeView, layoutParams)
-            })
+                    currentX -= dx.roundToInt()
+                    currentY -= dy.roundToInt()
+                    layoutParams.x = currentX
+                    layoutParams.y = currentY
+                    windowManager.updateViewLayout(composeView, layoutParams)
+                },
+                isButtonVisibleState.value
+            )
         }
 
 //        overlayView = composeView
@@ -217,7 +182,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         val notification = NotificationCompat.Builder(this, NotificationHelper.OVERLAY_CHANNEL_ID)
             .setContentTitle("Kaitou")
             .setContentText("Kaitou is running")
-            .setSmallIcon(R.drawable.ic_menu_view)
+            .setSmallIcon(android.R.drawable.ic_notification_overlay)
             .build()
 
 //        Log.i("Overlay Service","Staring service....")
@@ -232,7 +197,9 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         if (::composeView.isInitialized) {
             windowManager.removeView(composeView)
         }
-        unbindService(connection)
+        if (isBound) {
+            unbindService(connection)
+        }
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
     }
 

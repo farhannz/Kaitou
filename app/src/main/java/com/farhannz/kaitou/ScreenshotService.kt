@@ -1,6 +1,5 @@
 package com.farhannz.kaitou
 
-import android.R
 import android.app.Activity.RESULT_OK
 import android.app.Notification
 import android.app.NotificationChannel
@@ -22,36 +21,16 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.provider.MediaStore
-import android.util.DisplayMetrics
 import android.util.Log
 import android.view.WindowInsets
 import android.view.WindowManager
-import android.widget.Toast
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
-import androidx.appcompat.app.AppCompatActivity
-import androidx.compose.foundation.layout.asPaddingValues
-import androidx.compose.foundation.layout.displayCutout
-import androidx.compose.foundation.layout.systemBars
-import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.compose.ui.platform.LocalView
-import androidx.compose.ui.unit.DpSize
-import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
-import androidx.window.layout.WindowMetrics
 import androidx.core.graphics.createBitmap
-import androidx.core.view.ViewCompat
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
-import com.farhannz.kaitou.helpers.NotificationHelper.CAPTURE_CHANNEL_ID
-import java.nio.ByteBuffer
 
 
 fun Image.toBitmap(): Bitmap {
@@ -217,7 +196,7 @@ class ScreenshotServiceRework : Service () {
         val notification = NotificationCompat.Builder(this, "ScreenshotRework")
             .setContentTitle("Kaitou")
             .setContentText("Screen Capture is running")
-            .setSmallIcon(R.drawable.ic_menu_view)
+            .setSmallIcon(android.R.drawable.ic_menu_view)
             .build()
         startForeground(1991, notification)
     }
@@ -227,201 +206,4 @@ class ScreenshotServiceRework : Service () {
         virtualDisplay?.release()
         mediaProjection?.stop()
     }
-}
-
-
-class ScreenshotService : Service() {
-
-    private lateinit var mediaProjectionManager: MediaProjectionManager
-    private lateinit var mediaProjection: MediaProjection
-
-    private var binder = ScreenshotServiceBinder()
-    private var imageReader: ImageReader? = null
-    private var virtualDisplay: VirtualDisplay? = null
-    private var density: Int = 0
-    private var width: Int = 0
-    private var height: Int = 0
-
-    override fun onBind(intent: Intent): IBinder {
-        return binder
-    }
-
-    // Request code for MediaProjection permission
-    companion object {
-        const val CAPTURE_NOTIFICATION_ID = 1771
-        const val MEDIA_PROJECTION_REQUEST_CODE = 1001
-        const val ACTION_START_PROJECTION = "com.farhannz.kaitou.ACTION_START_PROJECTION"
-        const val ACTION_STOP_PROJECTION = "com.farhannz.kaitou.ACTION_STOP_PROJECTION"
-        const val EXTRA_RESULT_CODE = "resultCode"
-        const val EXTRA_DATA_INTENT = "dataIntent"
-    }
-
-    private var callback: ScreenshotCallback? = null
-
-    interface ScreenshotCallback {
-        fun onCaptureComplete(bitmap: ImageBitmap)
-        fun onCaptureFailed(error: String)
-    }
-
-    inner class ScreenshotServiceBinder : Binder() {
-        fun registerCallback(cb: ScreenshotCallback) {
-            callback = cb
-        }
-        fun getService(): ScreenshotService = this@ScreenshotService
-    }
-
-    fun captureScreen(resultCode: Int, data: Intent?) {
-        try {
-            val metrics = resources.displayMetrics
-            val width = metrics.widthPixels
-            val height = metrics.heightPixels
-
-            Log.d("ScreenCapture", "${width}x${height}")
-            imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 1).apply {
-                setOnImageAvailableListener({ reader ->
-                    try {
-                        val image = reader.acquireLatestImage()
-                        if (image == null) {
-                            Log.w("ScreenCapture", "Null image received, retrying...")
-                            callback?.onCaptureFailed("Failed to capture, retrying...")
-                            retryCapture(resultCode, data!!)
-                            return@setOnImageAvailableListener
-                        }
-
-                        try {
-                            val bitmap = image.toBitmap().asImageBitmap()
-                            callback?.onCaptureComplete(bitmap)
-                        } finally {
-                            image.close()
-                        }
-                    } catch (e: Exception) {
-                        callback?.onCaptureFailed("Image processing failed: ${e.message}")
-                    } finally {
-                        tearDownCapture()
-                    }
-                }, Handler(Looper.getMainLooper()))
-            }
-        } catch (e: Exception) {
-            callback?.onCaptureFailed("Capture setup failed: ${e.message}")
-        }
-
-        // Implement your actual capture logic here
-//            takeScreenshot()
-    }
-
-    private fun retryCapture(resultCode: Int, data: Intent) {
-        Handler(Looper.getMainLooper()).postDelayed({
-            captureScreen(resultCode, data)
-        }, 300) // Retry after 300ms
-    }
-
-    private fun takeScreenshot() {
-        Log.i("ScreenCaptureService", "Taking screenshot...")
-
-
-        val dummyBitmap = createBitmap(100, 100).asImageBitmap()
-        callback?.onCaptureComplete(dummyBitmap)
-        // Dummy implementation - replace with actual capture code
-        // In a real implementation, this would use MediaProjection
-    }
-
-
-    override fun onCreate() {
-        super.onCreate()
-        NotificationHelper.createNotificationChannels(this)
-        startForeground(CAPTURE_NOTIFICATION_ID, createNotification())
-    }
-
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.let {
-            val resultCode = it.getIntExtra("resultCode", -1)
-            val data = it.getParcelableExtra("data", Intent::class.java)
-
-            if (resultCode == RESULT_OK && data != null) {
-                setupMediaProjection(resultCode, data)
-                captureScreen(resultCode,data)
-                // Dummy capture - just log for now
-
-//                Log.d("ScreenCapture", "Dummy capture initiated")
-            }
-        }
-        return START_STICKY
-    }
-
-    private fun setupMediaProjection(resultCode: Int, data: Intent) {
-        try {
-            mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager)
-                .getMediaProjection(resultCode, data)
-
-            val metrics = resources.displayMetrics
-            virtualDisplay = mediaProjection.createVirtualDisplay(
-                "ScreenCapture",
-                metrics.widthPixels,
-                metrics.heightPixels,
-                metrics.densityDpi,
-                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                imageReader?.surface,
-                object : VirtualDisplay.Callback() {
-                    override fun onPaused() {
-                        Log.w("ScreenCapture", "VirtualDisplay paused")
-                    }
-
-                    override fun onResumed() {
-                        Log.w("ScreenCapture", "VirtualDisplay resumed")
-                    }
-
-                    override fun onStopped() {
-                        Log.w("ScreenCapture", "VirtualDisplay stopped")
-                    }
-                },
-                null
-            )
-        } catch (e: Exception) {
-            callback?.onCaptureFailed("Failed to setup projection: ${e.message}")
-        }
-    }
-
-    private fun createNotification(): Notification {
-        val stopIntent = Intent(this, ScreenshotService::class.java).apply {
-            action = ACTION_STOP_PROJECTION
-        }
-        val stopPendingIntent = PendingIntent.getService(
-            this,
-            0,
-            stopIntent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
-        return NotificationCompat.Builder(this, NotificationHelper.CAPTURE_CHANNEL_ID)
-            .setContentTitle("Screen Capture")
-            .setContentText("Capturing screen...")
-            .setSmallIcon(R.drawable.ic_notification_overlay)
-            .addAction(R.drawable.ic_delete, "Stop", stopPendingIntent)
-            .build()
-    }
-//
-//    private fun createNotificationChannel() {
-//        val channel = NotificationChannel(
-//            CHANNEL_ID,
-//            "Screen Capture",
-//            NotificationManager.IMPORTANCE_LOW
-//        )
-//        getSystemService(NotificationManager::class.java).createNotificationChannel(channel)
-//    }
-
-
-    private fun tearDownCapture() {
-        virtualDisplay?.release()
-        imageReader?.close()
-        mediaProjection.stop()
-        virtualDisplay = null
-        imageReader = null
-    }
-
-    override fun onDestroy() {
-        super.onDestroy()
-        mediaProjection.stop()
-        Log.d("ScreenCapture", "Service destroyed")
-    }
-
 }

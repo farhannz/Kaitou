@@ -4,6 +4,7 @@ import android.content.Context
 import com.farhannz.kaitou.data.models.DictionaryInfo
 import com.farhannz.kaitou.data.models.Word
 import com.farhannz.kaitou.external.jmdict_simplified.jmdict.JMdictJsonElement
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -149,6 +150,7 @@ object JMdictManager {
     /**
      * Loads the JMdict data into memory from an input stream.
      */
+    @OptIn(ExperimentalSerializationApi::class)
     fun initialize(inputStream: InputStream) {
         val jsonIgnoreUnknown = Json { ignoreUnknownKeys = true }
         jmdictData = jsonIgnoreUnknown.decodeFromStream<JMDictData>(inputStream)

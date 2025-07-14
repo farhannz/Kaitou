@@ -6,6 +6,8 @@ import clipper2.core.Point64
 import clipper2.offset.ClipperOffset
 import clipper2.offset.EndType
 import clipper2.offset.JoinType
+import com.farhannz.kaitou.data.models.DetectionResult
+import com.farhannz.kaitou.helpers.Logger
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -21,6 +23,8 @@ import kotlin.math.min
 import kotlin.math.round
 
 
+
+
 // Reimplementation of PaddleX's DBPostProcess
 // https://github.com/PaddlePaddle/PaddleX/blob/30e67135ac05299cd63e0eb389ffecadad042f7f/paddlex/inference/models/text_detection/processors.py#L276
 class DBPostProcess(
@@ -31,14 +35,14 @@ class DBPostProcess(
     private val scoreMode: String = "fast",
     private val boxType: String = "quad"
 ) {
+    private val LOG_TAG = DBPostProcess::class.simpleName
+    private val logger = Logger(LOG_TAG!!)
     private val minSize: Int = 3
 
     init {
         require(scoreMode in listOf("slow", "fast")) { "Score mode must be 'slow' or 'fast'" }
         require(boxType in listOf("quad", "poly")) { "Box type must be 'quad' or 'poly'" }
     }
-
-    data class DetectionResult(val boxes: List<List<Point>>, val scores: List<Double>)
 
     fun process(pred: Mat, useDilation : Boolean,  imgShape: DoubleArray): DetectionResult {
         val minMax = Core.minMaxLoc(pred)

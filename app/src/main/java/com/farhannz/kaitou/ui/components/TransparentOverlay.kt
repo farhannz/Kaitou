@@ -2,20 +2,18 @@ package com.farhannz.kaitou.ui.components
 
 import android.util.Log
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Camera
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.*
-import dev.shreyaspatil.capturable.capturable
-import dev.shreyaspatil.capturable.controller.rememberCaptureController
-import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 @Composable
@@ -46,7 +44,7 @@ fun TransparentOverlay(onCaptureClick: () -> Unit) {
 }
 
 @Composable
-fun DraggableOverlayContent(onCaptureClick: () -> Unit, onDrag: (Float, Float) -> Unit) {
+fun DraggableOverlayContent(onCaptureClick: () -> Unit, onDrag: (Float, Float) -> Unit, isVisible : Boolean) {
     // These offsets are relative to the *ComposeView itself*.
     // Since the ComposeView is now WRAP_CONTENT, and we're moving the entire window
     // with onDrag, these internal offsets can largely be removed, or used for
@@ -67,7 +65,12 @@ fun DraggableOverlayContent(onCaptureClick: () -> Unit, onDrag: (Float, Float) -
                     // Pass the drag amount up to the Service to update window position
                     onDrag(dragAmount.x, dragAmount.y)
                 }
-            }
+            }.graphicsLayer {
+                alpha = if (isVisible) 1f else 0f
+            }.then(
+                if (isVisible) Modifier.clickable(onClick = onCaptureClick)
+                else Modifier
+            ),
     ) {
         Icon(Icons.Default.Camera, contentDescription = "Capture")
     }
