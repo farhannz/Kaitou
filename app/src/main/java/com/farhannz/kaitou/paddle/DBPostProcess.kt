@@ -1,5 +1,6 @@
 package com.farhannz.kaitou.paddle
 
+import android.graphics.Rect
 import clipper2.core.Path64
 import clipper2.core.Paths64
 import clipper2.core.Point64
@@ -7,6 +8,7 @@ import clipper2.offset.ClipperOffset
 import clipper2.offset.EndType
 import clipper2.offset.JoinType
 import com.farhannz.kaitou.data.models.DetectionResult
+import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.helpers.Logger
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -33,7 +35,8 @@ class DBPostProcess(
     private val maxCandidates: Int = 1000,
     private val unclipRatio: Double = 2.0,
     private val scoreMode: String = "fast",
-    private val boxType: String = "quad"
+    private val boxType: String = "quad",
+    private val groupedBoxes: Boolean = true
 ) {
     private val LOG_TAG = DBPostProcess::class.simpleName
     private val logger = Logger(LOG_TAG!!)
@@ -44,7 +47,78 @@ class DBPostProcess(
         require(boxType in listOf("quad", "poly")) { "Box type must be 'quad' or 'poly'" }
     }
 
-    fun process(pred: Mat, useDilation : Boolean,  imgShape: DoubleArray): DetectionResult {
+
+    // Compute the bounding rectangle (AABB) for a list of points
+    fun getBoundingRect(points: List<Point>): Rect {
+        if (points.isEmpty()) return Rect(0, 0, 0, 0)
+        val minX = points.minOf { it.x }.toInt()
+        val maxX = points.maxOf { it.x }.toInt()
+        val minY = points.minOf { it.y }.toInt()
+        val maxY = points.maxOf { it.y }.toInt()
+        return Rect(minX, minY, maxX, maxY)
+    }
+    fun getBoxFromRect(rect: Rect): List<Point> {
+        return listOf(
+            Point(rect.left.toDouble(), rect.top.toDouble()),   // top-left
+            Point(rect.right.toDouble(), rect.top.toDouble()),  // top-right
+            Point(rect.right.toDouble(), rect.bottom.toDouble()), // bottom-right
+            Point(rect.left.toDouble(), rect.bottom.toDouble())  // bottom-left
+        )
+    }
+
+    // Check if two rectangles overlap
+    fun doRectanglesOverlap(rect1: Rect, rect2: Rect): Boolean {
+        return rect1.left < rect2.right &&
+                rect2.left < rect1.right &&
+                rect1.top < rect2.bottom &&
+                rect2.top < rect1.bottom
+    }
+
+    // Group overlapping boxes using a graph-based approach
+    fun groupOverlappingBoxes(boxes: List<List<Point>>): List<List<Point>> {
+        val n = boxes.size
+        if (n == 0) return emptyList()
+
+        val adjList = List(n) { mutableListOf<Int>() }
+        val boundingRects = boxes.map { getBoundingRect(it) }
+
+        for (i in 0 until n) {
+            for (j in i + 1 until n) {
+                if (doRectanglesOverlap(boundingRects[i], boundingRects[j])) {
+                    adjList[i].add(j)
+                    adjList[j].add(i)
+                }
+            }
+        }
+
+        val visited = BooleanArray(n)
+        val groups = mutableListOf<List<Point>>()
+
+        fun dfs(node: Int, currentPoints: MutableList<Point>) {
+            visited[node] = true
+            currentPoints.addAll(boxes[node])
+            for (neighbor in adjList[node]) {
+                if (!visited[neighbor]) {
+                    dfs(neighbor, currentPoints)
+                }
+            }
+        }
+
+        for (i in 0 until n) {
+            if (!visited[i]) {
+                val currentPoints = mutableListOf<Point>()
+                dfs(i, currentPoints)
+
+                val rect = getBoundingRect(currentPoints)
+                val mergedBox = getBoxFromRect(rect)
+                groups.add(mergedBox)
+            }
+        }
+
+        return groups
+    }
+
+    fun process(pred: Mat, useDilation : Boolean,  imgShape: DoubleArray): GroupedResult {
         val minMax = Core.minMaxLoc(pred)
         logger.DEBUG("Min: ${minMax.minVal}, Max: ${minMax.maxVal}")
         val (srcH, srcW, ratioH, ratioW) = imgShape
@@ -63,11 +137,20 @@ class DBPostProcess(
 //        logger.DEBUG("(WxH) ${mask.cols()} x ${mask.rows()}")
 //        val file = File(Environment.getExternalStorageDirectory(), "Download/segmentation_debug.png")
 //        Imgcodecs.imwrite(file.absolutePath,mask)
-        return when (boxType) {
+        val boxes = when (boxType) {
             "poly" -> polygonsFromBitmap(pred, mask, srcW, srcH)
             "quad" -> boxesFromBitmap(pred, mask, srcW, srcH)
             else -> throw IllegalArgumentException("Invalid box type: $boxType")
         }
+        if (groupedBoxes) {
+            val grouped = groupOverlappingBoxes(boxes.boxes)
+            grouped.forEachIndexed { index, box ->
+                logger.DEBUG("Grouped $index")
+                logger.DEBUG(box.joinToString(","))
+            }
+            return GroupedResult(boxes, grouped)
+        }
+        return GroupedResult(boxes, emptyList())
     }
 
     private fun polygonsFromBitmap(pred: Mat, bitmap: Mat, destWidth: Double, destHeight: Double): DetectionResult {

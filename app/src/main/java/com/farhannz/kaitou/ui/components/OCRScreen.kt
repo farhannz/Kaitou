@@ -278,7 +278,8 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 contentAlignment = Alignment.Center
             ) {
                 LaunchedEffect(ocrState) {
-                    val (det, texts) = OCRPipeline.extractTexts(inputImage)
+                    val (dets, texts) = OCRPipeline.extractTexts(inputImage)
+                    val (det, grouped) = dets
                     boxes.add(det)
                     logger.DEBUG(boxes[0].boxes.joinToString(","))
                     logger.DEBUG(boxes[0].scores.joinToString(","))

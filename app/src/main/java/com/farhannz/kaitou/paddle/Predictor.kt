@@ -13,6 +13,7 @@ import java.util.*
 import androidx.core.graphics.scale
 import com.baidu.paddle.lite.Tensor
 import com.farhannz.kaitou.data.models.DetectionResult
+import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.helpers.Logger
 import com.google.android.material.animation.ImageMatrixProperty
 import okhttp3.internal.wait
@@ -42,7 +43,7 @@ object PredictorManager {
         detection.initialize(context, "paddle", "ppocrv5_det.nb")
     }
 
-    fun runDetection(inputImage : Bitmap): DetectionResult {
+    fun runDetection(inputImage : Bitmap): GroupedResult {
         return detection.runInference(inputImage)
     }
 }
@@ -121,7 +122,7 @@ class DetectionPredictor : BasePredictor() {
     private val input_shape = longArrayOf(3,960,960)
     private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 1.25)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
-    fun runInference(inputImage : Bitmap): DetectionResult {
+    fun runInference(inputImage : Bitmap): GroupedResult {
         val end2end = Date()
         logger.INFO("Running inference")
         var start = Date()
@@ -204,7 +205,7 @@ class DetectionPredictor : BasePredictor() {
         originalBitmap: Bitmap,
         config: Map<String, Double>,
         useDilate: Boolean = false
-    ): DetectionResult {
+    ): GroupedResult {
         val outputTensor = predictor.getOutput(0)
         val width = outputTensor.shape()[2]
         val height = outputTensor.shape()[3]
