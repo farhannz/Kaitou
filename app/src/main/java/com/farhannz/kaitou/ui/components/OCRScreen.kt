@@ -8,12 +8,19 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -26,7 +33,9 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
@@ -35,6 +44,7 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenManager
 import com.farhannz.kaitou.paddle.OCRPipeline
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -78,17 +88,86 @@ fun tokenizeWithPOS(text: String): List<TokenInfo> {
     return result
 }
 
+@Composable
+fun BottomPopup(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
+    val swipeThreshold = with(LocalDensity.current) { 80.dp.toPx() }
+    var offsetY by remember { mutableFloatStateOf(0f) }
 
-@OptIn(ExperimentalLayoutApi::class)
+    var internalVisible by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        internalVisible = true
+    }
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Transparent)
+    ) {
+        AnimatedVisibility(
+            visible = internalVisible,
+            enter = slideInVertically(
+                initialOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(300)
+            ),
+            exit = slideOutVertically(
+                targetOffsetY = { fullHeight -> fullHeight },
+                animationSpec = tween(200)
+            ),
+            modifier = Modifier.align(Alignment.BottomCenter)
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .offset { IntOffset(0, offsetY.toInt()) }
+                    .background(Color.White, shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                    .padding(16.dp)
+                    .verticalScroll(rememberScrollState())
+                    .pointerInput(Unit) {
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                if (offsetY > swipeThreshold) {
+                                    internalVisible = false
+                                    onDismiss()
+                                } else {
+                                    offsetY = 0f
+                                }
+                            },
+                            onDragCancel = { offsetY = 0f },
+                            onVerticalDrag = { _, dragAmount ->
+                                offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                            }
+                        )
+                    }
+            ) {
+                content()
+            }
+        }
+    }
+}
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun WordPolygonsOverlay(
-    wordsWithPolys: List<Pair<String, List<List<Float>>>>,
+    grouped: GroupedResult?,
+    originalImage: Bitmap,
     onClicked: () -> Unit,
     screenSize: Pair<Int, Int>
 ) {
     var showPopup by remember { mutableStateOf(false) }
     var tokens by remember { mutableStateOf<List<TokenInfo>>(emptyList()) }
     var selectedWord by remember { mutableStateOf("") }
+    val selectedIndices = remember { mutableStateListOf<Int>() }
+    if (grouped == null) return
+
+    val texts = remember { mutableListOf<String>() }
+    val results = remember { mutableListOf<List<List<Float>>>() }
+
+    grouped.grouped.forEachIndexed { idx, box ->
+        texts.add("placeholder_$idx")
+        results.add(box.first.map { listOf(it.x.toFloat(), it.y.toFloat()) })
+    }
+
+    val wordsWithPolys = texts.zip(results)
 
     // Precompute bounding boxes for hit testing
     val boundingBoxes: List<Pair<String, Rect>> = remember(wordsWithPolys, screenSize) {
@@ -101,98 +180,78 @@ fun WordPolygonsOverlay(
         }
     }
 
+    // Drawing logic is separated, with remembered paths
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val canvasWidth = size.width
+        val canvasHeight = size.height
+        val scaleX = canvasWidth / screenSize.first.toFloat()
+        val scaleY = canvasHeight / screenSize.second.toFloat()
+
+        val paths = wordsWithPolys.map { (_, poly) ->
+            Path().apply {
+                moveTo(poly[0][0] * scaleX, poly[0][1] * scaleY)
+                poly.drop(1).forEach { point ->
+                    lineTo(point[0] * scaleX, point[1] * scaleY)
+                }
+                close()
+            }
+        }
+
+        paths.forEach { path ->
+            drawPath(path, color = Color.Red.copy(alpha = 0.1f), style = Fill)
+            drawPath(path, color = Color.Red, style = Stroke(width = 1.dp.toPx()))
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(Color(0x51000000))
             .windowInsetsPadding(WindowInsets.safeDrawing)
-    ) {
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .pointerInput(wordsWithPolys, boundingBoxes) {
-                    logger.DEBUG(boundingBoxes.toString())
-                    detectTapGestures { offset: Offset ->
-                        logger.DEBUG(offset.toString())
-                        val canvasWidth = size.width
-                        val canvasHeight = size.height
-                        val scaleX = canvasWidth / screenSize.first.toFloat()
-                        val scaleY = canvasHeight / screenSize.second.toFloat()
+            .pointerInput(wordsWithPolys, boundingBoxes) {
+//                logger.DEBUG(boundingBoxes.toString())
+                detectTapGestures { offset: Offset ->
+                    logger.DEBUG(offset.toString())
+                    val canvasWidth = size.width
+                    val canvasHeight = size.height
+                    val scaleX = canvasWidth / screenSize.first.toFloat()
+                    val scaleY = canvasHeight / screenSize.second.toFloat()
 
-                        // Check if tap is inside any polygon's bounding box
-                        val tappedIndex = boundingBoxes.indexOfFirst { (_, rect) ->
-                            offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
-                                    offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
-                        }
-                        if (tappedIndex != -1) {
-                            logger.DEBUG("$offset - $tappedIndex")
-                            // Verify exact polygon hit
-                            val (word, poly) = wordsWithPolys[tappedIndex]
-                            selectedWord = word
-                            logger.DEBUG("$word, $poly")
-                            tokens = tokenizeWithPOS(word)
-                            showPopup = true
-                        } else {
-                            if (!showPopup) onClicked()
-                        }
+                    // Check if tap is inside any polygon's bounding box
+                    val tappedIndex = boundingBoxes.indexOfFirst { (_, rect) ->
+                        offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
+                                offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
+                    }
+                    if (tappedIndex != -1) {
+                        selectedIndices.clear()
+                        logger.DEBUG("$offset - $tappedIndex")
+                        // Verify exact polygon hit
+                        val (word, poly) = wordsWithPolys[tappedIndex]
+                        selectedIndices.addAll(grouped.grouped[tappedIndex].second)
+                        showPopup = true
+                    } else {
+                        if (!showPopup) onClicked()
                     }
                 }
-        ) {
-            val canvasWidth = size.width
-            val canvasHeight = size.height
-            val scaleX = canvasWidth / screenSize.first.toFloat()
-            val scaleY = canvasHeight / screenSize.second.toFloat()
-
-            // Draw all polygons
-            wordsWithPolys.forEach { (_, poly) ->
-                val path = Path().apply {
-                    moveTo(poly[0][0] * scaleX, poly[0][1] * scaleY)
-                    poly.drop(1).forEach { point ->
-                        lineTo(point[0] * scaleX, point[1] * scaleY)
-                    }
-                    close()
-                }
-
-                drawPath(
-                    path = path,
-                    color = Color.Red.copy(alpha = 0.1f),
-                    style = Fill
-                )
-                drawPath(
-                    path = path,
-                    color = Color.Red,
-                    style = Stroke(width = 1.dp.toPx())
-                )
             }
-        }
-
+    ) {
         if (showPopup) {
-            Surface(
-                modifier = Modifier
-                    .clickable { showPopup = false }
-                    .background(Color.Transparent)
-                    .fillMaxSize()
+            BottomPopup(
+                onDismiss = { showPopup = false }
             ) {
-                Column(
-                    modifier = Modifier
-                        .verticalScroll(rememberScrollState())
-                        .background(Color.Transparent)
-                        .matchParentSize()
-                ) {
-                    Text(
-                        text = selectedWord,
-                        style = MaterialTheme.typography.headlineSmall,
-                        modifier = Modifier.padding(16.dp)
-                    )
-                    logger.DEBUG(tokens.toString())
-                    val merged = TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
-                        .let { TokenManager().correctAuxiliaryNegative(it)}
-                    logger.DEBUG("Merged : $merged")
-                    logger.DEBUG("Merged length ${merged.size}")
-                    merged.forEach {
-                        PopUpDict(it)
+                val merged = remember {mutableListOf<TokenInfo>()}
+                LaunchedEffect(Unit) {
+                    withContext(Dispatchers.Default) {
+                        val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
+                        selectedWord = texts.joinToString("")
+                        tokens = tokenizeWithPOS(selectedWord)
+                        logger.DEBUG(selectedWord)
+                        merged.addAll(TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
+                            .let { TokenManager().correctAuxiliaryNegative(it) })
+
                     }
                 }
+                BottomSheetContent(merged, {showPopup=false})
             }
         }
     }
@@ -256,19 +315,10 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
 
     // Mock data for demonstration
-    val results = remember {
-        mutableStateListOf<OCRResult>()
-//        listOf(
-//            OCRResult("こんにちは", BoundingBox(20f, 150f, 100f, 180f)),
-//            OCRResult("日本語", BoundingBox(20f, 300f, 70f, 330f)),
-//            OCRResult("明日は映画を見に行きます", BoundingBox(300f, 60f, 330f, 465f)),
-//            OCRResult("東京で友達とラーメンを食べた", BoundingBox(460f, 50f, 490f, 465f)),
-//            OCRResult("「よくある話」と言われたけれど", BoundingBox(600f, 500f, 690f, 930f))
-//
-//        )
-    }
+    val results = remember { mutableStateListOf<OCRResult>()}
 
     val zipped = remember { mutableStateListOf<Pair<String, List<List<Float>>>>() }
+    val groupedResult = remember {mutableListOf<GroupedResult>()}
     val boxes = remember {mutableListOf<DetectionResult>()}
     when (val state = ocrState) {
         is OCRUIState.ProcessingOCR -> {
@@ -281,25 +331,9 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
             ) {
                 LaunchedEffect(ocrState) {
                     withContext(Dispatchers.Default) {
-                        val (dets, texts) = OCRPipeline.extractTexts(inputImage)
-
-                        withContext(Dispatchers.Main) {
-                            // Update UI state
-                            texts.forEach { logger.DEBUG(it) }
-                            val (det, grouped) = dets
-                            boxes.add(det)
-
-                            val _texts = mutableListOf<String>()
-                            val _results = mutableListOf<List<List<Float>>>()
-
-                            det.boxes.forEachIndexed { idx, box ->
-                                _texts.add(texts[idx])
-                                _results.add(box.map {listOf(it.x.toFloat(), it.y.toFloat())})
-                            }
-
-                            zipped.addAll(_texts.zip(_results))
-                            ocrState = OCRUIState.Done
-                        }
+                        val dets = OCRPipeline.detectTexts(inputImage)
+                        groupedResult.add(dets)
+                        ocrState = OCRUIState.Done
                     }
                 }
                 CircularProgressIndicator()
@@ -310,7 +344,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
             onClicked()
         }
         is OCRUIState.Done -> {
-            WordPolygonsOverlay(zipped, onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
+            WordPolygonsOverlay(groupedResult.firstOrNull(), inputImage,onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
         }
     }
 }

@@ -47,7 +47,7 @@ sealed class OCRUIState {
 //  [Point(x,y), Point(x,y), Point(x,y), Point(x,y)]
 // ]
 
-data class GroupedResult(val detections : DetectionResult, val grouped: List<List<Point>>)
+data class GroupedResult(val detections : DetectionResult, val grouped: List<Pair<List<Point>, List<Int>>>)
 data class DetectionResult(val boxes: List<List<Point>>, val scores: List<Double>)
 
 
