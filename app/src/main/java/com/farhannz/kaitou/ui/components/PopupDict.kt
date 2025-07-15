@@ -1,6 +1,5 @@
 package com.farhannz.kaitou.ui.components
 
-import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,61 +16,27 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ModifierLocalBeyondBoundsLayout
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.window.Dialog
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.DatabaseManager
 
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun BottomSheetWithStickyHeader() {
-    var showBottomSheet by remember { mutableStateOf(false) }
-    val bottomSheetState = rememberModalBottomSheetState(
-        skipPartiallyExpanded = true
-    )
-
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Button(
-            onClick = { showBottomSheet = true }
-        ) {
-            Text("Show Bottom Sheet")
-        }
-    }
-
-    if (showBottomSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showBottomSheet = false },
-            sheetState = bottomSheetState,
-            dragHandle = null, // We'll create our own header
-        ) {
-            BottomSheetContent(
-                emptyList(),
-                onDismiss = { showBottomSheet = false }
-            )
-        }
-    }
-}
 
 @Composable
 @Preview
 fun previewBottomSheet() {
-    BottomSheetContent(emptyList<TokenInfo>(), {})
+    BottomSheetContent(listOf(TokenInfo("元気", "元気", "asd")), "元気ですか", {})
 }
 
 @Composable
 fun BottomSheetContent(
-    merged : List<TokenInfo>,
+    merged: List<TokenInfo>,
+    selectedWord: String,
     onDismiss: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
@@ -85,12 +50,12 @@ fun BottomSheetContent(
     ) {
         // Sticky Header
         StickyHeader(
-            title = "元気ですか",
+            title = selectedWord,
             onDismiss = onDismiss
         )
-
+        logger.DEBUG("Merged size ${merged.size}")
         // Single Scrollable Morpheme Breakdown Card
-        MorphemeBreakdownCard()
+        MorphemeBreakdownCard(merged)
     }
 }
 
@@ -133,51 +98,74 @@ fun StickyHeader(
 }
 
 @Composable
-fun MorphemeBreakdownCard() {
-    // Sample morpheme data - you can replace this with your actual data
-    val morphemeData = listOf(
-        MorphemeData("元気", "na-adjective", "genki", "healthy, energetic"),
-        MorphemeData("です", "auxiliary", "desu", "polite copula"),
-        MorphemeData("か", "particle", "ka", "question particle"),
-        MorphemeData("元気", "na-adjective", "genki", "healthy, energetic"),
-        MorphemeData("です", "auxiliary", "desu", "polite copula"),
-        MorphemeData("か", "particle", "ka", "question particle"),
-        MorphemeData("元気", "na-adjective", "genki", "healthy, energetic"),
-        MorphemeData("です", "auxiliary", "desu", "polite copula"),
-        MorphemeData("か", "particle", "ka", "question particle"),
-        MorphemeData("元気", "na-adjective", "genki", "healthy, energetic"),
-        MorphemeData("です", "auxiliary", "desu", "polite copula"),
-        MorphemeData("か", "particle", "ka", "question particle")
-    )
-
-    Card(
+fun MorphemeBreakdownCard(merged: List<TokenInfo>) {
+    LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Text(
-                text = "Morpheme Breakdown:",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
+        items(merged.size) { idx ->
+            MorphemeItemCard(merged[idx])
+        }
+    }
+}
 
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+@Composable
+fun MorphemeItemCard(token: TokenInfo) {
+    var state by remember(token) { mutableStateOf<LookupState>(LookupState.LookingUp) }
+
+    LaunchedEffect(token) {
+        val result = DatabaseManager.getDatabase().dictionaryDao().lookupWord(token)
+        state = if (result.isNotEmpty()) {
+            LookupState.Done(result)
+        } else {
+            LookupState.NotFound
+        }
+    }
+
+    when (val s = state) {
+        is LookupState.LookingUp -> {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                items(morphemeData.size) { idx ->
-                    MorphemeItem(
-                        morpheme = morphemeData[idx].text,
-                        type = morphemeData[idx].type,
-                        reading = morphemeData[idx].reading,
-                        meaning = morphemeData[idx].meaning
-                    )
-                }
+                CircularProgressIndicator()
+            }
+        }
+
+        is LookupState.Done -> {
+            val entry = s.result.first()
+            val reading = entry.getMostLikelyKana(token)
+            val meaning = entry.getMostLikelyMeaning(token)
+            val surfaceForm = entry.kanji.firstOrNull { it.common == true }?.text
+                ?: entry.kana.firstOrNull { it.common == true }?.text
+                ?: entry.kanji.firstOrNull()?.text
+                ?: entry.kana.firstOrNull()?.text
+                ?: token.surface
+
+            MorphemeItem(
+                morpheme = surfaceForm,
+                reading = reading ?: "",
+                meaning = meaning ?: "",
+                type = "" // Optional: add part of speech
+            )
+        }
+
+        is LookupState.NotFound -> {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp)
+            ) {
+                Text(
+                    text = "Word not found in dictionary.",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
         }
     }

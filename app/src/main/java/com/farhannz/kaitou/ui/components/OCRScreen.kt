@@ -17,7 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -32,6 +31,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
@@ -44,7 +44,6 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenManager
 import com.farhannz.kaitou.paddle.OCRPipeline
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Callback
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
@@ -145,6 +144,38 @@ fun BottomPopup(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Un
         }
     }
 }
+
+@Composable
+fun DrawPolygons(
+    wordsWithPolys: List<Pair<String, List<List<Float>>>>,
+    screenSize: Pair<Int, Int>,
+    selectedIndices: List<Int> = emptyList()
+) {
+    val rawPaths = remember(wordsWithPolys) {
+        wordsWithPolys.map { (_, poly) ->
+            poly.map { point -> Offset(point[0], point[1]) }
+        }
+    }
+
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val scaleX = size.width / screenSize.first.toFloat()
+        val scaleY = size.height / screenSize.second.toFloat()
+
+        rawPaths.forEachIndexed { index, poly ->
+            val isSelected = selectedIndices.contains(index)
+            val path = Path().apply {
+                moveTo(poly[0].x * scaleX, poly[0].y * scaleY)
+                poly.drop(1).forEach {
+                    lineTo(it.x * scaleX, it.y * scaleY)
+                }
+                close()
+            }
+            val color = if (isSelected) Color.Blue else Color.Red
+            drawPath(path, color = color.copy(alpha = 0.1f), style = Fill)
+            drawPath(path, color = color, style = Stroke(width = 1.dp.toPx()))
+        }
+    }
+}
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun WordPolygonsOverlay(
@@ -180,79 +211,89 @@ fun WordPolygonsOverlay(
         }
     }
 
-    // Drawing logic is separated, with remembered paths
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val canvasWidth = size.width
-        val canvasHeight = size.height
-        val scaleX = canvasWidth / screenSize.first.toFloat()
-        val scaleY = canvasHeight / screenSize.second.toFloat()
+    val tappedIndex = remember { mutableIntStateOf(-1) }
+    SubcomposeLayout { constraints ->
+        val canvasPlaceable = subcompose("Canvas") {
+            DrawPolygons(wordsWithPolys, screenSize, listOf(tappedIndex.value))
+        }.map { it.measure(constraints) }
 
-        val paths = wordsWithPolys.map { (_, poly) ->
-            Path().apply {
-                moveTo(poly[0][0] * scaleX, poly[0][1] * scaleY)
-                poly.drop(1).forEach { point ->
-                    lineTo(point[0] * scaleX, point[1] * scaleY)
-                }
-                close()
-            }
-        }
-
-        paths.forEach { path ->
-            drawPath(path, color = Color.Red.copy(alpha = 0.1f), style = Fill)
-            drawPath(path, color = Color.Red, style = Stroke(width = 1.dp.toPx()))
-        }
-    }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0x51000000))
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .pointerInput(wordsWithPolys, boundingBoxes) {
+        val overlayPlaceable = subcompose("Overlay") {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color(0x51000000))
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+                    .pointerInput(wordsWithPolys, boundingBoxes) {
 //                logger.DEBUG(boundingBoxes.toString())
-                detectTapGestures { offset: Offset ->
-                    logger.DEBUG(offset.toString())
-                    val canvasWidth = size.width
-                    val canvasHeight = size.height
-                    val scaleX = canvasWidth / screenSize.first.toFloat()
-                    val scaleY = canvasHeight / screenSize.second.toFloat()
+                        detectTapGestures { offset: Offset ->
+                            logger.DEBUG(offset.toString())
+                            val canvasWidth = size.width
+                            val canvasHeight = size.height
+                            val scaleX = canvasWidth / screenSize.first.toFloat()
+                            val scaleY = canvasHeight / screenSize.second.toFloat()
 
-                    // Check if tap is inside any polygon's bounding box
-                    val tappedIndex = boundingBoxes.indexOfFirst { (_, rect) ->
-                        offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
-                                offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
+                            // Check if tap is inside any polygon's bounding box
+                            tappedIndex.value = boundingBoxes.indexOfFirst { (_, rect) ->
+                                offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
+                                        offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
+                            }
+                            if (tappedIndex.value != -1) {
+                                selectedIndices.clear()
+                                logger.DEBUG("$offset - $tappedIndex")
+                                // Verify exact polygon hit
+                                val (word, poly) = wordsWithPolys[tappedIndex.value]
+                                selectedIndices.addAll(grouped.grouped[tappedIndex.value].second)
+                                showPopup = true
+                            } else {
+                                if (!showPopup) onClicked()
+                            }
+                        }
                     }
-                    if (tappedIndex != -1) {
-                        selectedIndices.clear()
-                        logger.DEBUG("$offset - $tappedIndex")
-                        // Verify exact polygon hit
-                        val (word, poly) = wordsWithPolys[tappedIndex]
-                        selectedIndices.addAll(grouped.grouped[tappedIndex].second)
-                        showPopup = true
-                    } else {
-                        if (!showPopup) onClicked()
-                    }
-                }
-            }
-    ) {
-        if (showPopup) {
-            BottomPopup(
-                onDismiss = { showPopup = false }
             ) {
-                val merged = remember {mutableListOf<TokenInfo>()}
-                LaunchedEffect(Unit) {
-                    withContext(Dispatchers.Default) {
-                        val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
-                        selectedWord = texts.joinToString("")
-                        tokens = tokenizeWithPOS(selectedWord)
-                        logger.DEBUG(selectedWord)
-                        merged.addAll(TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
-                            .let { TokenManager().correctAuxiliaryNegative(it) })
+                if (showPopup) {
+                    BottomPopup(
+                        onDismiss = { showPopup = false }
+                    ) {
+                        var merged by remember { mutableStateOf<List<TokenInfo>?>(null) }
+                        var selectedWord by remember { mutableStateOf("") }
 
+                        LaunchedEffect(selectedIndices) {
+                            merged = null // reset before loading
+                            withContext(Dispatchers.Default) {
+                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
+                                selectedWord = texts.joinToString("")
+                                val tokens = tokenizeWithPOS(selectedWord)
+                                logger.DEBUG(selectedWord)
+                                val result = TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
+                                    .let { TokenManager().correctAuxiliaryNegative(it) }
+
+                                merged = result
+                            }
+                        }
+
+// Show loading until `merged` is ready
+                        if (merged == null) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                CircularProgressIndicator()
+                            }
+                        } else {
+                            BottomSheetContent(merged!!, selectedWord) {
+                                showPopup = false
+                            }
+                        }
                     }
                 }
-                BottomSheetContent(merged, {showPopup=false})
             }
+        }.map { it.measure(constraints) }
+
+        layout(constraints.maxWidth, constraints.maxHeight) {
+            canvasPlaceable.forEach { it.place(0, 0) }
+            overlayPlaceable.forEach { it.place(0, 0) }
         }
     }
 }
