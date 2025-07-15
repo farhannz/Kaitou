@@ -1,9 +1,8 @@
 package com.farhannz.kaitou.helpers
 
 import com.farhannz.kaitou.data.models.TokenInfo
-import org.apache.lucene.analysis.ja.Token
-
-class TokenManager {
+import com.farhannz.kaitou.`data`.models.SenseWithGlosses
+class TokenHelper {
 
     fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>?, maxGram: Int = 6): List<TokenInfo> {
         // Add before merging
@@ -43,6 +42,35 @@ class TokenManager {
             i += if (merged != null) 0 else 1
         }
         return result
+    }
+
+    fun simpleDeinflect(word: String): List<String> {
+        val candidates = mutableListOf<String>()
+
+        // Negative
+        if (word.endsWith("ない")) candidates.add(word.dropLast(2) + "る")
+
+        // Past tense
+        if (word.endsWith("た") || word.endsWith("ました")) candidates.add(word.dropLast(1) + "る")
+
+        // Te-form
+        if (word.endsWith("て") || word.endsWith("で")) candidates.add(word.dropLast(1) + "る")
+
+        // Passive / Potential
+        if (word.endsWith("れる")) candidates.add(word.dropLast(2) + "る")
+        if (word.endsWith("られる")) candidates.add(word.dropLast(3) + "る")
+
+        // Polite
+        if (word.endsWith("ます")) candidates.add(word.dropLast(2) + "る")
+
+        // Causative
+        if (word.endsWith("させる")) candidates.add(word.dropLast(3) + "る")
+        if (word.endsWith("さす")) candidates.add(word.dropLast(2) + "す")
+
+        // Default fallback
+        candidates.add(word)
+
+        return candidates.distinct()
     }
 
     fun correctAuxiliaryNegative(tokens: List<TokenInfo>): List<TokenInfo> {

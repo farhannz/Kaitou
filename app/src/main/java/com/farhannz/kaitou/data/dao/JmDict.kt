@@ -1,11 +1,16 @@
 package com.farhannz.kaitou.data.dao
 
+import androidx.room.ColumnInfo
 import androidx.room.Dao
+import androidx.room.Embedded
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.helpers.DatabaseManager
+import com.farhannz.kaitou.helpers.posMapping
+import kotlinx.serialization.json.Json
 
 @Dao
 interface DictionaryDao {
@@ -31,6 +36,61 @@ interface DictionaryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGlosses(glosses: List<Gloss>)
+
+    suspend fun buildSurfaceToUniDicMap(): Map<String, String> {
+        val rows = DatabaseManager.getDatabase().dictionaryDao().getAllSurfacePos()
+
+        val forward = posMapping.flatMap { (uni, jmList) ->
+            jmList.map { jmRaw ->
+                val clean = jmRaw.removeSurrounding("\"")   // drop leading/trailing "
+                clean to uni
+            }
+        }.toMap()         // JMdict tag -> UniDic tag
+
+        val json = Json { ignoreUnknownKeys = true }
+
+        return rows.groupBy({ it.surface }, { it.jmdictPos })
+            .mapValues { (_, jmdictTags) ->
+                jmdictTags
+                    .asSequence()
+                    .flatMap { json.decodeFromString<List<String>>(it) } // 🔥 Proper parse here
+                    .map { it.trim() }
+                    .firstNotNullOfOrNull { forward[it] }
+                    ?: "未知語"
+            }
+    }
+    // tiny projection: surface + JMdict POS
+    data class SurfacePos(val surface: String, val jmdictPos: String)
+
+    @Query("""
+    SELECT DISTINCT k.text AS surface, s.part_of_speech AS jmdictPos
+    FROM kanji k
+    JOIN sense s ON k.word_id = s.word_id
+""")
+    suspend fun getKanjiSurfacePos(): List<SurfacePos>
+
+    @Query("""
+    SELECT DISTINCT k.text AS surface, s.part_of_speech AS jmdictPos
+    FROM kana k
+    JOIN sense s ON k.word_id = s.word_id
+""")
+    suspend fun getKanaSurfacePos(): List<SurfacePos>
+
+    @Query("""
+    SELECT DISTINCT text AS surface, part_of_speech AS jmdictPos
+    FROM (
+        SELECT k.text, s.part_of_speech
+        FROM kanji k
+        JOIN sense s ON k.word_id = s.word_id
+        
+        UNION
+        
+        SELECT k.text, s.part_of_speech
+        FROM kana k
+        JOIN sense s ON k.word_id = s.word_id
+    )
+""")
+    suspend fun getAllSurfacePos(): List<SurfacePos>
 
     @Transaction
     @Query("""
@@ -59,6 +119,27 @@ interface DictionaryDao {
     )
 """)
     suspend fun lookupWordsByTerms(terms: List<String>): List<WordFull>
+
+    data class WordWithSurface(
+        @Embedded val word: WordFull,
+        @ColumnInfo(name = "surface") val surface: String
+    )
+    @Transaction
+    @Query("""
+    SELECT w.*,
+           k.text AS surface          -- or k.text if kanji wins ties
+    FROM words w
+    JOIN kanji k ON w.id = k.word_id
+    WHERE k.text IN (:surfaces)
+    UNION
+    SELECT w.*,
+           ka.text AS surface
+    FROM words w
+    JOIN kana ka ON w.id = ka.word_id
+    WHERE ka.text IN (:surfaces)
+""")
+    suspend fun lookupWordsWithSurface(surfaces: List<String>): List<WordWithSurface>
+
     /**
      * Looks up a word using its token information. For ambiguous parts of speech like
      * particles, it strictly filters the results to match the token's role.
@@ -67,41 +148,62 @@ interface DictionaryDao {
      * @return A list of matching `WordFull` objects, correctly filtered.
      */
     suspend fun lookupWord(token: TokenInfo): List<WordFull> {
-        // 1. Get all potential words from the database based on text.
         val terms = listOfNotNull(token.baseForm, token.surface).distinct()
-        if (terms.isEmpty()) {
-            return emptyList()
-        }
-        val potentialWords = lookupWordsByTerms(terms) // Existing DAO call
+        if (terms.isEmpty()) return emptyList()
 
-        // 2. Define ambiguous POS categories that require strict filtering.
-        val ambiguousPosCategories = setOf("助詞", "助動詞") // "Particle", "Auxiliary Verb"
+        val potentialWords = lookupWordsByTerms(terms)
+        if (potentialWords.isEmpty()) return emptyList()
+
         val tokenPosCategory = token.partOfSpeech.substringBefore("-")
+        val posMapping = getPosMapping()
+        val mappedJmdictPOS = posMapping[token.partOfSpeech] ?: posMapping[tokenPosCategory] ?: emptyList()
 
-        // 3. If the token is an ambiguous type (like a particle), filter the results.
-        if (tokenPosCategory in ambiguousPosCategories) {
-            val posMapping = getPosMapping()
-            val mappedJmdictPOS = posMapping[tokenPosCategory] ?: emptyList()
+        data class ScoredWord(val word: WordFull, val score: Double)
 
-            if (mappedJmdictPOS.isEmpty()) {
-                return potentialWords // Cannot filter, return all results
+        val scored = potentialWords.map { word ->
+            var score = 0.0
+
+            // Exact match bonus
+            val surfaceMatch = word.kanji.any { it.text == token.surface } ||
+                    word.kana.any { it.text == token.surface }
+            val baseformMatch = word.kanji.any { it.text == token.baseForm } ||
+                    word.kana.any { it.text == token.baseForm }
+
+            when {
+                surfaceMatch -> score += 20.0
+                baseformMatch -> score += 10.0
             }
 
-            // Return only the words that contain a sense matching the token's POS.
-            return potentialWords.filter { word ->
-                word.senses.any { senseWithGlosses ->
-                    val sensePosTags = senseWithGlosses.sense.partOfSpeech
+            // POS match scoring
+            if (mappedJmdictPOS.isNotEmpty()) {
+                val posMatches = word.senses.count { sense ->
+                    val sensePosTags = sense.sense.partOfSpeech
                         .removeSurrounding("[", "]")
                         .split(",")
                         .map { it.trim().removeSurrounding("\"") }
-
                     sensePosTags.any { it in mappedJmdictPOS }
                 }
+
+                // Strong POS filtering for particles/auxiliary verbs
+                val ambiguousPosCategories = setOf("助詞", "助動詞")
+                if (tokenPosCategory in ambiguousPosCategories) {
+                    if (posMatches == 0) score = -100.0 // Exclude completely
+                    else score += posMatches * 10.0
+                } else {
+                    score += posMatches * 5.0 // Bonus for POS match
+                }
             }
+
+            // Prefer words with fewer senses (more specific)
+            score += (10.0 / (word.senses.size + 1))
+
+            ScoredWord(word, score)
         }
 
-        // 4. For non-ambiguous words (nouns, verbs, etc.), return all potential matches.
-        return potentialWords
+        return scored
+            .filter { it.score > 0 } // Remove excluded words
+            .sortedByDescending { it.score }
+            .map { it.word }
     }
 
     /**

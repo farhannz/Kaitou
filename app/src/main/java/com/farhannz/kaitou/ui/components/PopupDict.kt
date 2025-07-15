@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.DatabaseManager
+import com.farhannz.kaitou.helpers.posMapping
 
 
 @Composable
@@ -138,35 +139,40 @@ fun MorphemeItemCard(token: TokenInfo) {
 
         is LookupState.Done -> {
             val entry = s.result.first()
-            val reading = entry.getMostLikelyKana(token)
-            val meaning = entry.getMostLikelyMeaning(token)
-            val surfaceForm = entry.kanji.firstOrNull { it.common == true }?.text
-                ?: entry.kana.firstOrNull { it.common == true }?.text
-                ?: entry.kanji.firstOrNull()?.text
-                ?: entry.kana.firstOrNull()?.text
+
+            // Use the matched kanji/kana from lookupWord result
+            val surfaceForm = entry.kanji.find { it.text == token.surface }?.text
+                ?: entry.kana.find { it.text == token.surface }?.text
+                ?: entry.kanji.find { it.text == token.baseForm }?.text
+                ?: entry.kana.find { it.text == token.baseForm }?.text
+                ?: entry.kanji.find { it.common == true }?.text
+                ?: entry.kana.find { it.common == true }?.text
                 ?: token.surface
+
+            val reading = entry.kana.find { it.text == token.surface }?.text
+                ?: entry.kana.find { it.text == token.baseForm }?.text
+                ?: entry.kana.find { it.common == true }?.text
+                ?: entry.kana.firstOrNull()?.text
+                ?: ""
+
+            val meaning = entry.senses.firstOrNull()?.glosses
+                ?.firstOrNull { it.lang == "eng" }?.text ?: ""
 
             MorphemeItem(
                 morpheme = surfaceForm,
-                reading = reading ?: "",
-                meaning = meaning ?: "",
-                type = "" // Optional: add part of speech
+                reading = reading,
+                meaning = meaning,
+                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: "" // Optional: add part of speech
             )
         }
 
         is LookupState.NotFound -> {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp)
-            ) {
-                Text(
-                    text = "Word not found in dictionary.",
-                    modifier = Modifier.padding(16.dp),
-                    style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
+            MorphemeItem(
+                morpheme = token.surface,
+                reading = "",
+                meaning = "",
+                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: "" // Optional: add part of speech
+            )
         }
     }
 }

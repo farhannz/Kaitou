@@ -39,9 +39,10 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.helpers.BoundaryViterbi
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.helpers.TokenManager
+import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.paddle.OCRPipeline
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -240,8 +241,6 @@ fun WordPolygonsOverlay(
                             if (tappedIndex.value != -1) {
                                 selectedIndices.clear()
                                 logger.DEBUG("$offset - $tappedIndex")
-                                // Verify exact polygon hit
-                                val (word, poly) = wordsWithPolys[tappedIndex.value]
                                 selectedIndices.addAll(grouped.grouped[tappedIndex.value].second)
                                 showPopup = true
                             } else {
@@ -264,9 +263,11 @@ fun WordPolygonsOverlay(
                                 selectedWord = texts.joinToString("")
                                 val tokens = tokenizeWithPOS(selectedWord)
                                 logger.DEBUG(selectedWord)
-                                val result = TokenManager().mergeWithDictionary(tokens, DatabaseManager.getCache())
-                                    .let { TokenManager().correctAuxiliaryNegative(it) }
-
+                                val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {
+                                    TokenHelper().correctAuxiliaryNegative(it)
+                                }
+                                val result = BoundaryViterbi.segment(passiveProcessed, DatabaseManager.getCache()!!)
+                                logger.DEBUG(result.joinToString("\n"))
                                 merged = result
                             }
                         }

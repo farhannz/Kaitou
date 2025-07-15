@@ -11,6 +11,7 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.Relation
 import com.farhannz.kaitou.helpers.DatabaseManager
+import com.farhannz.kaitou.helpers.posMapping
 
 
 @Entity(tableName = "dictionary_info")
@@ -159,23 +160,6 @@ data class WordFull(
             ?: kana.firstOrNull()?.text
     }
     fun getMostLikelyMeaning(token: TokenInfo): String? {
-        val posMapping = mapOf(
-            "名詞" to listOf("n", "pn", "vs", "adj-no"),
-            "動詞" to listOf("v1", "v5", "v5u", "v5k", "v5g", "v5s", "v5t", "v5n", "v5b", "v5m", "v5r", "vk", "vz", "vi", "vt", "vs"),
-            "助動詞" to listOf("aux", "aux-v", "aux-adj"),
-            "形容詞" to listOf("adj-i", "adj-na", "adj-no"),
-            "副詞" to listOf("adv"),
-            "助詞" to listOf("prt"),
-            "連体詞" to listOf("adj-no"),
-            "接続詞" to listOf("conj"),
-            "感動詞" to listOf("int"),
-            "記号" to listOf("sym"),
-            "接頭詞" to listOf("pref"),
-            "接尾詞" to listOf("suf"),
-            "連語" to listOf("phr"),
-            "形容詞" to listOf("adj-i", "adj-na", "adj-no"),
-            "形容詞-自立" to listOf("aux", "aux-v", "adj-i", "v5r-i")
-        )
 
         val kuromojiPOS = token.partOfSpeech.substringBefore("-")
         val mappedJmdictPOS = posMapping[kuromojiPOS] ?: emptyList()
