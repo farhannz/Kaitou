@@ -10,6 +10,7 @@ import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
+import java.security.acl.Group
 import java.util.Date
 
 object OCRPipeline {
@@ -47,7 +48,44 @@ object OCRPipeline {
         detection.initialize(context, "paddle", "ppocrv5_det.nb")
         recognizer.initialize(context, "paddle", "ppocrv5_rec.nb")
     }
-    fun extractTexts(inputImage: Bitmap): Pair<GroupedResult, List<String>> {
+
+    fun detectTexts(inputImage: Bitmap) : GroupedResult {
+        return detection.runInference(inputImage)
+    }
+
+    fun extractTexts(inputImage: Bitmap, groupedResult: GroupedResult, selectedIndices: List<Int>) : List<String>{
+        val inputMat = Mat()
+        Utils.bitmapToMat(inputImage, inputMat)
+        val boxes = selectedIndices.map {
+            groupedResult.detections.boxes[it]
+        }.sortedByDescending { box ->
+            box.maxOf { it.x }
+        }
+
+        val textResults = mutableListOf<String>()
+        for (batchStart in boxes.indices step batchSize) {
+            val batchEnd = minOf(batchStart + batchSize, boxes.size)
+            val batchBoxes = boxes.subList(batchStart, batchEnd)
+            // Prepare batch of cropped images
+            val croppedImages = batchBoxes.map { box ->
+                val cropped = cropFromBox(inputMat, box)
+                val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.25f
+                if (isVertical) {
+                    Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
+                }
+
+                val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
+                Utils.matToBitmap(cropped, bm)
+                bm
+            }
+            val batchTexts = recognizer.runBatchInference(croppedImages)
+            textResults.addAll(batchTexts)
+
+            logger.DEBUG("Processed batch ${batchStart / batchSize + 1}: ${batchEnd - batchStart} images")
+        }
+        return textResults
+    }
+    fun endToEndPipeline(inputImage: Bitmap): Pair<GroupedResult, List<String>> {
         val e2e = Date()
         val inputMat = Mat()
         Utils.bitmapToMat(inputImage, inputMat)

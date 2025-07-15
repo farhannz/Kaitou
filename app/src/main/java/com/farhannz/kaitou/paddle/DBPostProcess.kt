@@ -75,7 +75,7 @@ class DBPostProcess(
     }
 
     // Group overlapping boxes using a graph-based approach
-    fun groupOverlappingBoxes(boxes: List<List<Point>>): List<List<Point>> {
+    fun groupOverlappingBoxes(boxes: List<List<Point>>): List<Pair<List<Point>, List<Int>>> {
         val n = boxes.size
         if (n == 0) return emptyList()
 
@@ -92,14 +92,21 @@ class DBPostProcess(
         }
 
         val visited = BooleanArray(n)
-        val groups = mutableListOf<List<Point>>()
+        val groups = mutableListOf<Pair<List<Point>, List<Int>>>()
 
-        fun dfs(node: Int, currentPoints: MutableList<Point>) {
+//        1 -> 2,5,6
+//        2 -> 1,3,4
+//        3 -> 2
+//        4 -> 2
+//        $ -> 1
+//        6 -> 1
+        fun dfs(node: Int, currentPoints: MutableList<Point>, currentIndexes : MutableList<Int>) {
             visited[node] = true
             currentPoints.addAll(boxes[node])
+            currentIndexes.add(node)
             for (neighbor in adjList[node]) {
                 if (!visited[neighbor]) {
-                    dfs(neighbor, currentPoints)
+                    dfs(neighbor, currentPoints, currentIndexes)
                 }
             }
         }
@@ -107,14 +114,14 @@ class DBPostProcess(
         for (i in 0 until n) {
             if (!visited[i]) {
                 val currentPoints = mutableListOf<Point>()
-                dfs(i, currentPoints)
+                val currentIndexes = mutableListOf<Int>()
+                dfs(i, currentPoints, currentIndexes)
 
                 val rect = getBoundingRect(currentPoints)
                 val mergedBox = getBoxFromRect(rect)
-                groups.add(mergedBox)
+                groups.add(Pair(mergedBox,currentIndexes))
             }
         }
-
         return groups
     }
 
