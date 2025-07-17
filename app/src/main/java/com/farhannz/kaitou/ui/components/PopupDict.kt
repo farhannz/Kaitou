@@ -20,6 +20,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -65,6 +66,12 @@ fun StickyHeader(
     title: String,
     onDismiss: () -> Unit
 ) {
+    val fontSize = when {
+        title.length <= 12 -> 24.sp
+        title.length <= 20 -> 20.sp
+        else -> 16.sp
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
@@ -79,9 +86,11 @@ fun StickyHeader(
         ) {
             Text(
                 text = title,
-                fontSize = 24.sp,
+                fontSize = fontSize,
                 fontWeight = FontWeight.Bold,
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(1f),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
 
             IconButton(
@@ -212,13 +221,13 @@ fun MorphemeItem(
         }
 
         Text(
-            text = "Reading: $reading",
+            text = reading,
             fontSize = 14.sp,
             color = Color(0xFF424242)
         )
 
         Text(
-            text = "Meaning: $meaning",
+            text = meaning,
             fontSize = 14.sp,
             color = Color(0xFF424242)
         )
