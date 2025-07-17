@@ -10,7 +10,7 @@
     <application
         android:name=".MainApplication"
         android:label="Kaitou"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+        android:theme="@style/TransparentTheme"
         android:usesCleartextTraffic="true">
         <activity android:name=".MainActivity"
             android:exported="true">
@@ -19,6 +19,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <activity android:name=".OverlayHostActivity"
+                  android:windowSoftInputMode="adjustResize"
+                  android:exported="false"
+                  android:excludeFromRecents="true"
+                  android:taskAffinity=""
+                  android:launchMode="singleInstance"/>
         <activity
                 android:name=".helpers.ScreenshotPermissionActivity"
                 android:theme="@android:style/Theme.Translucent.NoTitleBar"

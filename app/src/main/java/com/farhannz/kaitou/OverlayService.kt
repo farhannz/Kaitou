@@ -75,6 +75,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         }
     }
 
+
     private fun createComposeView(content: ComposableContent) : ComposeView {
         return ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
@@ -93,6 +94,10 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     }
 
     private fun showOCRScreen(image: Bitmap) {
+        val intent = Intent(this, OverlayHostActivity::class.java).apply {
+           flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        startActivity(intent)
         ocrScreen = createComposeView {
             OCRScreen(onClicked = {
                     removeOverlay()
@@ -104,11 +109,9 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH or
-                    WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         )
 
@@ -131,6 +134,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     override fun onCreate() {
         super.onCreate()
+        instance = this
         savedStateRegistryController.performAttach() // you can ignore this line, becase performRestore method will auto call performAttach() first.
         savedStateRegistryController.performRestore(null)
         startForegroundServiceWithNotification()
@@ -177,6 +181,8 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     companion object {
         const val OVERLAY_NOTIFICATION_ID = 1770
+        var instance: OverlayService? = null
+            private set
     }
     private fun startForegroundServiceWithNotification() {
         NotificationHelper.createNotificationChannels(this)
@@ -203,10 +209,11 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             unbindService(connection)
         }
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
+        instance = null
     }
 
 
-    private fun removeOverlay() {
+    fun removeOverlay() {
         ocrScreen?.let {
             try {
                 windowManager.removeView(it)
