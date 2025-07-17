@@ -18,6 +18,9 @@ android {
         versionName = "1.0"
         minSdk = 31
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            abiFilters.add("arm64-v8a")
+        }
     }
 
     sourceSets {
@@ -36,9 +39,6 @@ android {
 //            isShrinkResources = true
 //            isDebuggable = true
             signingConfig = signingConfigs.getByName("debug")
-            ndk {
-                abiFilters.add("arm64-v8a")
-            }
         }
     }
 
@@ -53,11 +53,11 @@ android {
 //        abiFilters 'armeabi-v7a', 'arm64-v8a'
 //    }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_21
+        targetCompatibility = JavaVersion.VERSION_21
     }
     kotlinOptions {
-        jvmTarget = "11"
+        jvmTarget = "21"
     }
     buildFeatures {
         viewBinding = true
@@ -84,7 +84,8 @@ dependencies {
     ksp("androidx.room:room-compiler:$room")
 
     implementation(files("libs/PaddlePredictor.jar"))
-    implementation(project(":opencv"))
+//    implementation(project(":opencv"))
+    implementation("org.opencv:opencv:4.12.0")
     implementation("com.github.micycle1:Clipper2-java:1.3.1")
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

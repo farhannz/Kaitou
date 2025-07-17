@@ -18,6 +18,7 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.paddle.OCRPipeline
 import kotlinx.coroutines.launch
 import org.opencv.android.OpenCVLoader
+import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {
 
@@ -51,7 +52,7 @@ class MainActivity : ComponentActivity() {
 
     private fun requestOverlayPermission() {
         if (!Settings.canDrawOverlays(this)) {
-            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName"))
+            val intent = Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, "package:$packageName".toUri())
             overlayPermissionLauncher.launch(intent)
         } else {
             startOverlayService()
@@ -86,6 +87,7 @@ class MainActivity : ComponentActivity() {
         } else {
             // Permission denied
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
+            requestScreenShotPermission()
         }
 }
     private fun requestScreenShotPermission() {
@@ -106,43 +108,9 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (OpenCVLoader.initLocal()) {
-            logger.DEBUG("OpenCV initialized successfully")
-        } else {
-            logger.ERROR("OpenCV initialization failed")
-        }
-//        database = DictionaryDatabase.getDatabase(this)
         enableEdgeToEdge()
         OCRPipeline.initialize(this)
         lifecycleScope.launch {
-//            try {
-//                System.loadLibrary("paddle_lite_jni")
-//                val dummy = Mat.zeros(1000,1000, CvType.CV_8UC3)
-//                Imgproc.putText(
-//                    dummy,
-//                    "THIS IS ONLY A TEST", // Corrected typo
-//                    Point(50.0, 100.0),   // Adjusted position to fit better
-//                    Imgproc.FONT_HERSHEY_COMPLEX,
-//                    3.0,
-//                    Scalar(0.0, 255.0, 255.0) // Yellow color in BGR
-//                )
-//
-//                // Add the second line of text
-//                Imgproc.putText(
-//                    dummy,
-//                    "MENGHADEUH CUY",
-//                    Point(50.0, 300.0),   // Adjusted position to fit better
-//                    Imgproc.FONT_HERSHEY_COMPLEX,
-//                    3.0,
-//                    Scalar(0.0, 255.0, 255.0) // Yellow color in BGR
-//                )
-//
-//                val boxes = PredictorManager.runDetection(matToBitmap(dummy))
-//                logger.DEBUG("${boxes.size}")
-//            } catch (e: Throwable) {
-//                logger.ERROR(e.message.toString())
-//            }
-
             DatabaseManager.initializeWordsCache()
         }
         requestScreenShotPermission()
