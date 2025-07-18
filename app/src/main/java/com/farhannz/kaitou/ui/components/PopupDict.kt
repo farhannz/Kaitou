@@ -1,5 +1,6 @@
 package com.farhannz.kaitou.ui.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,13 +51,11 @@ fun BottomSheetContent(
             .fillMaxWidth()
             .heightIn(max = maxHeight)
     ) {
-        // Sticky Header
         StickyHeader(
             title = selectedWord,
             onDismiss = onDismiss
         )
         logger.DEBUG("Merged size ${merged.size}")
-        // Single Scrollable Morpheme Breakdown Card
         MorphemeBreakdownCard(merged)
     }
 }
@@ -71,11 +70,11 @@ fun StickyHeader(
         title.length <= 20 -> 20.sp
         else -> 16.sp
     }
-
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 4.dp
+        shadowElevation = 4.dp,
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(
             modifier = Modifier
@@ -87,10 +86,10 @@ fun StickyHeader(
             Text(
                 text = title,
                 fontSize = fontSize,
-                fontWeight = FontWeight.Bold,
+                lineHeight = fontSize * 1.4f,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.weight(1f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis
             )
 
             IconButton(
@@ -171,7 +170,7 @@ fun MorphemeItemCard(token: TokenInfo) {
                 morpheme = surfaceForm,
                 reading = reading,
                 meaning = meaning,
-                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: "" // Optional: add part of speech
+                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
             )
         }
 
@@ -180,7 +179,7 @@ fun MorphemeItemCard(token: TokenInfo) {
                 morpheme = token.surface,
                 reading = "",
                 meaning = "",
-                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: "" // Optional: add part of speech
+                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
             )
         }
     }
@@ -252,7 +251,6 @@ fun PopUpDict(
 ) {
     var currentState by remember { mutableStateOf<LookupState>(LookupState.LookingUp) }
 
-    // LaunchedEffect fetches data when the token changes.
     LaunchedEffect(token) {
         currentState = LookupState.LookingUp
         val dictionaryDao = DatabaseManager.getDatabase().dictionaryDao()
@@ -265,10 +263,8 @@ fun PopUpDict(
         }
     }
 
-    // UI changes based on the current state.
     when (val state = currentState) {
         is LookupState.LookingUp -> {
-            // 1. Show a loading indicator while fetching data.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -279,15 +275,11 @@ fun PopUpDict(
             }
         }
         is LookupState.Done -> {
-            // 2. Data is found, process and display it.
-            // Get the most likely entry from the results list.
             val wordEntry = state.result.first()
 
-            // Extract the most likely reading and meaning using your helper functions.
             val reading = wordEntry.getMostLikelyKana(token)
             val meaning = wordEntry.getMostLikelyMeaning(token)
 
-            // Determine the main display form (prioritize common kanji, then common kana).
             val surfaceForm = wordEntry.kanji.firstOrNull { it.common == true }?.text
                 ?: wordEntry.kana.firstOrNull { it.common == true }?.text
                 ?: wordEntry.kanji.firstOrNull()?.text
@@ -346,7 +338,6 @@ fun PopUpDict(
             }
         }
         is LookupState.NotFound -> {
-            // 3. Show a message if the word could not be found.
             Card(modifier = Modifier
                 .padding(horizontal = 16.dp, vertical = 8.dp)
                 .fillMaxWidth()

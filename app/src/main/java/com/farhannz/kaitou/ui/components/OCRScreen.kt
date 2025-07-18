@@ -355,13 +355,7 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
 @Composable
 fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
-
-    // Mock data for demonstration
-    val results = remember { mutableStateListOf<OCRResult>()}
-
-    val zipped = remember { mutableStateListOf<Pair<String, List<List<Float>>>>() }
     val groupedResult = remember {mutableListOf<GroupedResult>()}
-    val boxes = remember {mutableListOf<DetectionResult>()}
     when (val state = ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
@@ -386,7 +380,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
             onClicked()
         }
         is OCRUIState.Done -> {
-            WordPolygonsOverlay(groupedResult.firstOrNull(), inputImage,onClicked, Pair<Int,Int>(inputImage.width, inputImage.height))
+            WordPolygonsOverlay(groupedResult.firstOrNull(), inputImage,onClicked, Pair(inputImage.width, inputImage.height))
         }
     }
 }

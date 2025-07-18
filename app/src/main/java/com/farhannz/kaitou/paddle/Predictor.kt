@@ -20,6 +20,8 @@ import kotlin.math.max
 import kotlin.math.sqrt
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.TextLabel
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.min
 
 typealias CvSize = org.opencv.core.Size
@@ -120,7 +122,6 @@ class RecognitionPredictor : BasePredictor() {
         start = Date()
         val outputTensor = predictor.getOutput(0)
         val texts = postprocessBatch(outputTensor, batchSize)
-
         return texts
     }
 
@@ -171,15 +172,18 @@ class RecognitionPredictor : BasePredictor() {
 
     fun preprocess(bitmap: Bitmap): Mat {
         val inputMat = Mat()
-        Utils.bitmapToMat(bitmap, inputMat)
+        try{
+            Utils.bitmapToMat(bitmap, inputMat)
 
-        // Convert to RGB as Paddle expects
-        Imgproc.cvtColor(inputMat, inputMat, Imgproc.COLOR_BGR2RGB)
+            // Convert to RGB as Paddle expects
+            Imgproc.cvtColor(inputMat, inputMat, Imgproc.COLOR_BGR2RGB)
 
-        val maxRatio = max(bitmap.width.toFloat() / bitmap.height.toFloat(),
-            input_shape[1].toFloat() / input_shape[2].toFloat())
-
-        return resizeAndNormalizeImage(inputMat, maxRatio.toDouble())
+            val maxRatio = max(bitmap.width.toFloat() / bitmap.height.toFloat(),
+                input_shape[1].toFloat() / input_shape[2].toFloat())
+            return resizeAndNormalizeImage(inputMat, maxRatio.toDouble())
+        } finally {
+            inputMat.release()
+        }
     }
 
     fun postprocess(preds: Tensor) : String{
@@ -212,31 +216,36 @@ class RecognitionPredictor : BasePredictor() {
     }
 
     fun resizeAndNormalizeImage(img: Mat, maxWhRatio: Double): Mat {
-        val imgC = input_shape[0].toInt()
-        val imgH = input_shape[1].toInt()
-        val imgW = input_shape[2].toInt()
-
-        // Resize image to fit height
-        val h = img.rows()
-        val w = img.cols()
-        val ratio = w.toDouble() / h
-        val resizedW = min(ceil(imgH * ratio).toInt(), imgW)
-
         val resizedImage = Mat()
-        Imgproc.resize(img, resizedImage, CvSize(resizedW.toDouble(), imgH.toDouble()))
-
-        // Normalize
         val normalizedImage = Mat()
-        resizedImage.convertTo(normalizedImage, CvType.CV_32FC3, 1.0 / 255)
-        Core.subtract(normalizedImage, Scalar(0.5, 0.5, 0.5), normalizedImage)
-        Core.divide(normalizedImage, Scalar(0.5, 0.5, 0.5), normalizedImage)
+        try {
+            val imgC = input_shape[0].toInt()
+            val imgH = input_shape[1].toInt()
+            val imgW = input_shape[2].toInt()
 
-        // Pad to model width
-        val paddingIm = Mat.zeros(imgH, imgW, CvType.CV_32FC3)
-        val roi = paddingIm.submat(Rect(0, 0, resizedW, imgH))
-        normalizedImage.copyTo(roi)
+            // Resize image to fit height
+            val h = img.rows()
+            val w = img.cols()
+            val ratio = w.toDouble() / h
+            val resizedW = min(ceil(imgH * ratio).toInt(), imgW)
 
-        return paddingIm
+            Imgproc.resize(img, resizedImage, CvSize(resizedW.toDouble(), imgH.toDouble()))
+
+            // Normalize
+            resizedImage.convertTo(normalizedImage, CvType.CV_32FC3, 1.0 / 255)
+            Core.subtract(normalizedImage, Scalar(0.5, 0.5, 0.5), normalizedImage)
+            Core.divide(normalizedImage, Scalar(0.5, 0.5, 0.5), normalizedImage)
+
+            // Pad to model width
+            val paddingIm = Mat.zeros(imgH, imgW, CvType.CV_32FC3)
+            val roi = paddingIm.submat(Rect(0, 0, resizedW, imgH))
+            normalizedImage.copyTo(roi)
+
+            return paddingIm
+        } finally {
+            resizedImage.release()
+            normalizedImage.release()
+        }
     }
 }
 
@@ -248,7 +257,7 @@ class DetectionPredictor : BasePredictor() {
     private val logger = Logger(LOG_TAG!!)
 
     private val input_shape = longArrayOf(3,960,960)
-    private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 1.25)
+    private val postprocessor = DBPostProcess(boxThresh = 0.5, thresh = 0.25, unclipRatio = 2.0)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
     fun runInference(inputImage : Bitmap): GroupedResult {
         val end2end = Date()

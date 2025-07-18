@@ -4,17 +4,56 @@ import android.graphics.Bitmap
 import android.graphics.Color
 import com.farhannz.kaitou.helpers.Logger
 import androidx.core.graphics.scale
+import com.baidu.paddle.lite.Tensor
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
+import java.nio.FloatBuffer
 import kotlin.math.max
 import kotlin.math.sqrt
 
 private val LOG_TAG = "PredictorUtilsNew"
 private val logger = Logger(LOG_TAG)
+
+
+object PaddleHelper {
+    init {
+        System.loadLibrary("paddle_helper")
+    }
+
+    @JvmStatic
+    external fun getTensorBufferAddress(tensorAddr: Long, length: Int): Long
+
+    @JvmStatic
+    external fun copyBufferToAddress(buffer: FloatBuffer, nativePtr: Long, length: Int)
+}
+fun Tensor.safeNativeHandle(): Long {
+    return try {
+        val field = this::class.java.getDeclaredField("nativePointer")
+        field.isAccessible = true
+        field.getLong(this)
+    } catch (e: Exception) {
+        throw IllegalStateException("Unable to access native pointer", e)
+    }
+}
+
+private fun feedTensor(tensor: Tensor, mat: Mat, inputShape: List<Long>, buffer: FloatBuffer) {
+    require(mat.rows() == inputShape[1].toInt() && mat.cols() == inputShape[2].toInt())
+    buffer.clear()
+    val tmp = FloatArray(3)
+    for (h in 0 until mat.rows()) {
+        for (w in 0 until mat.cols()) {
+            mat.get(h, w, tmp)
+            buffer.put(tmp)
+        }
+    }
+    buffer.flip()
+    PaddleHelper.copyBufferToAddress(buffer, tensor.safeNativeHandle(), ((1 * inputShape[0] * inputShape[1] * inputShape[2]).toInt()))
+}
+
 fun resizeToMultipleOf32(bitmap: Bitmap, maxSizeLen: Int): Pair<Bitmap, FloatArray> {
     val (w, h) = bitmap.width to bitmap.height
     var ratio = 1f
@@ -48,12 +87,12 @@ fun resizeToMultipleOf32(bitmap: Bitmap, maxSizeLen: Int): Pair<Bitmap, FloatArr
 }
 
 
+fun norm(p1: Point, p2: Point): Double {
+    val dx = p1.x - p2.x
+    val dy = p1.y - p2.y
+    return sqrt(dx * dx + dy * dy)
+}
 fun cropFromBox(image: Mat, box: List<Point>): Mat {
-    fun norm(p1: Point, p2: Point): Double {
-        val dx = p1.x - p2.x
-        val dy = p1.y - p2.y
-        return sqrt(dx * dx + dy * dy)
-    }
 
     if (box.size != 4) throw IllegalArgumentException("Box must have 4 points")
 
@@ -78,7 +117,9 @@ fun cropFromBox(image: Mat, box: List<Point>): Mat {
     val transform = Imgproc.getPerspectiveTransform(srcMat, dstMat)
     val warped = Mat()
     Imgproc.warpPerspective(image, warped, transform, CvSize(maxWidth.toDouble(), maxHeight.toDouble()))
-
+    srcMat.release()
+    dstMat.release()
+    transform.release()
     return warped
 }
 fun bitmapToFloatArray(bitmap: Bitmap,

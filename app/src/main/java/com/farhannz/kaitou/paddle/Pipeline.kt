@@ -10,15 +10,14 @@ import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.imgproc.Imgproc
-import java.security.acl.Group
-import java.util.Date
+import java.util.*
 
 object OCRPipeline {
     private val LOG_TAG = OCRPipeline::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private lateinit var detection: DetectionPredictor // Text Detection Model
     private lateinit var recognizer : RecognitionPredictor // Text Recognizer Model
-    private val batchSize = 15
+    private val batchSize = 1
 
     private fun validateMat(input :Mat) : Mat{
         var validMat = when (input.channels()) {
@@ -55,35 +54,39 @@ object OCRPipeline {
 
     fun extractTexts(inputImage: Bitmap, groupedResult: GroupedResult, selectedIndices: List<Int>) : List<String>{
         val inputMat = Mat()
-        Utils.bitmapToMat(inputImage, inputMat)
-        val boxes = selectedIndices.map {
-            groupedResult.detections.boxes[it]
-        }.sortedByDescending { box ->
-            box.maxOf { it.x }
-        }
-
-        val textResults = mutableListOf<String>()
-        for (batchStart in boxes.indices step batchSize) {
-            val batchEnd = minOf(batchStart + batchSize, boxes.size)
-            val batchBoxes = boxes.subList(batchStart, batchEnd)
-            // Prepare batch of cropped images
-            val croppedImages = batchBoxes.map { box ->
-                val cropped = cropFromBox(inputMat, box)
-                val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.25f
-                if (isVertical) {
-                    Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
-                }
-
-                val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
-                Utils.matToBitmap(cropped, bm)
-                bm
+        try {
+            Utils.bitmapToMat(inputImage, inputMat)
+            val boxes = selectedIndices.map {
+                groupedResult.detections.boxes[it]
+            }.sortedByDescending { box ->
+                box.maxOf { it.x }
             }
-            val batchTexts = recognizer.runBatchInference(croppedImages)
-            textResults.addAll(batchTexts)
 
-            logger.DEBUG("Processed batch ${batchStart / batchSize + 1}: ${batchEnd - batchStart} images")
+            val textResults = mutableListOf<String>()
+            for (batchStart in boxes.indices step batchSize) {
+                val batchEnd = minOf(batchStart + batchSize, boxes.size)
+                val batchBoxes = boxes.subList(batchStart, batchEnd)
+                // Prepare batch of cropped images
+                val croppedImages = batchBoxes.map { box ->
+                    val cropped = cropFromBox(inputMat, box)
+                    val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.25f
+                    if (isVertical) {
+                        Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
+                    }
+
+                    val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
+                    Utils.matToBitmap(cropped, bm)
+                    bm
+                }
+                val batchTexts = recognizer.runBatchInference(croppedImages)
+                textResults.addAll(batchTexts)
+
+                logger.DEBUG("Processed batch ${batchStart / batchSize + 1}: ${batchEnd - batchStart} images")
+            }
+            return textResults
+        } finally {
+            inputMat.release()
         }
-        return textResults
     }
     fun endToEndPipeline(inputImage: Bitmap): Pair<GroupedResult, List<String>> {
         val e2e = Date()

@@ -25,14 +25,6 @@
                   android:excludeFromRecents="true"
                   android:taskAffinity=""
                   android:launchMode="singleInstance"/>
-        <activity
-                android:name=".helpers.ScreenshotPermissionActivity"
-                android:theme="@android:style/Theme.Translucent.NoTitleBar"
-                android:exported="false"
-                android:excludeFromRecents="true"
-                android:noHistory="true"
-        />
-
         <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse"/>
         <service android:name=".ScreenshotServiceRework" android:exported="false" android:foregroundServiceType="mediaProjection"/>
 
