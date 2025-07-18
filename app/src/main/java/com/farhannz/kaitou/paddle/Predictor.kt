@@ -3,6 +3,7 @@ package com.farhannz.kaitou.paddle
 //import org.opencv.core.*
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Environment
 import android.util.Size
 import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
@@ -11,29 +12,27 @@ import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.helpers.Logger
 import org.opencv.android.Utils
 import org.opencv.core.*
+import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
 import java.util.*
 import kotlin.math.ceil
 import kotlin.math.max
-import kotlin.math.sqrt
-import androidx.core.graphics.createBitmap
-import com.farhannz.kaitou.data.models.TextLabel
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.min
 
 typealias CvSize = org.opencv.core.Size
 
 abstract class BasePredictor {
-    open lateinit var modelName : String
-    open lateinit var folderPath : String
-    open lateinit var predictor : PaddlePredictor
-    open lateinit var config : MobileConfig
+    open lateinit var modelName: String
+    open lateinit var folderPath: String
+    open lateinit var predictor: PaddlePredictor
+    open lateinit var config: MobileConfig
+
     init {
         System.loadLibrary("paddle_lite_jni")
     }
+
     open fun initialize(context: Context, dirPath: String, fileName: String) {
         // Add this before using any Paddle Lite functions
         folderPath = dirPath
@@ -45,6 +44,7 @@ abstract class BasePredictor {
         }
         predictor = PaddlePredictor.createPaddlePredictor(config)
     }
+
     fun copyAssetToCache(context: Context, assetFolder: String = "", assetName: String): String {
         val assetSubPath = "${assetFolder}/$assetName" // use relative asset path
         val outDir = File(context.cacheDir, "paddle")
@@ -66,8 +66,8 @@ abstract class BasePredictor {
 class RecognitionPredictor : BasePredictor() {
     private val LOG_TAG = RecognitionPredictor::class.simpleName
     private val logger = Logger(LOG_TAG!!)
-    private lateinit var labelDecoder : CTCLabelDecoder
-    private val input_shape = longArrayOf(3,48,320)
+    private lateinit var labelDecoder: CTCLabelDecoder
+    private val input_shape = longArrayOf(3, 48, 320)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
     private val maxImageWidth = 3200
 
@@ -109,6 +109,7 @@ class RecognitionPredictor : BasePredictor() {
                     }
                 }
             }
+            resized.release()
         }
 
         inputTensor.setData(batchData)
@@ -172,21 +173,24 @@ class RecognitionPredictor : BasePredictor() {
 
     fun preprocess(bitmap: Bitmap): Mat {
         val inputMat = Mat()
-        try{
+        try {
             Utils.bitmapToMat(bitmap, inputMat)
 
             // Convert to RGB as Paddle expects
             Imgproc.cvtColor(inputMat, inputMat, Imgproc.COLOR_BGR2RGB)
 
-            val maxRatio = max(bitmap.width.toFloat() / bitmap.height.toFloat(),
-                input_shape[1].toFloat() / input_shape[2].toFloat())
+            val maxRatio = max(
+                bitmap.width.toFloat() / bitmap.height.toFloat(),
+                input_shape[1].toFloat() / input_shape[2].toFloat()
+            )
             return resizeAndNormalizeImage(inputMat, maxRatio.toDouble())
         } finally {
             inputMat.release()
+            bitmap.recycle()
         }
     }
 
-    fun postprocess(preds: Tensor) : String{
+    fun postprocess(preds: Tensor): String {
         val outputData = preds.floatData
         val shape = preds.shape()
         val timeSteps = shape[1].toInt()
@@ -211,7 +215,7 @@ class RecognitionPredictor : BasePredictor() {
             predIndices[t] = maxIndex
             predProbs[t] = maxProb
         }
-        val results = labelDecoder.decode(listOf(predIndices),listOf(predProbs))
+        val results = labelDecoder.decode(listOf(predIndices), listOf(predProbs))
         return results.joinToString("") { it.first }
     }
 
@@ -256,14 +260,14 @@ class DetectionPredictor : BasePredictor() {
     private val LOG_TAG = DetectionPredictor::class.simpleName
     private val logger = Logger(LOG_TAG!!)
 
-    private val input_shape = longArrayOf(3,960,960)
-    private val postprocessor = DBPostProcess(boxThresh = 0.5, thresh = 0.25, unclipRatio = 2.0)
+    private var inputShape = longArrayOf(3, 960, 960)
+    private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 2.0)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
-    fun runInference(inputImage : Bitmap): GroupedResult {
+    fun runInference(inputImage: Bitmap): GroupedResult {
         val end2end = Date()
         logger.INFO("Running inference")
         var start = Date()
-        val (preprocessed, resized) = preprocess(inputImage, input_shape.maxOrNull()?.toInt() ?:0)
+        val (preprocessed, resized) = preprocess(inputImage, inputShape.maxOrNull()?.toInt() ?: 0)
         var end = Date()
         var inferenceTime = (end.time - start.time)
 //        logger.INFO("[stat] Preprocessing time $inferenceTime ms");
@@ -295,13 +299,13 @@ class DetectionPredictor : BasePredictor() {
         }
         end = Date()
         inferenceTime = (end.time - start.time)
-//        logger.INFO("[stat] Inference time $inferenceTime ms");
+        logger.INFO("[stat] Inference time $inferenceTime ms");
 
         val detConfig = mapOf(
             "det_db_thresh" to 0.3
         )
         start = Date()
-        val postprocessed = postprocess(inputImage, detConfig,true)
+        val postprocessed = postprocess(inputImage, detConfig, true)
         end = Date()
         inferenceTime = (end.time - start.time)
 //        logger.INFO("[stat] Postprocessing time $inferenceTime ms");
@@ -330,6 +334,10 @@ class DetectionPredictor : BasePredictor() {
 //        val file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")
 //        saveBitmapToFileDirectly(resized,file.absolutePath)
         ratioHW = ratios
+//        val file = File(Environment.getExternalStorageDirectory(), "Download/resized.png")
+//        val debugImg = Mat()
+//        Utils.bitmapToMat(resized, debugImg)
+//        Imgcodecs.imwrite(file.absolutePath, debugImg)
 
         // Convert to float array with normalization
         val floatArray = bitmapToFloatArray(resized, normalize = true)
@@ -346,20 +354,22 @@ class DetectionPredictor : BasePredictor() {
         val outputTensor = predictor.getOutput(0)
         val width = outputTensor.shape()[2]
         val height = outputTensor.shape()[3]
-        val outputMat =  Mat(height.toInt(), width.toInt(), CvType.CV_32F).apply {
-            put(0,0, outputTensor.floatData)
+        val outputMat = Mat(height.toInt(), width.toInt(), CvType.CV_32F).apply {
+            put(0, 0, outputTensor.floatData)
         }
         logger.DEBUG("outputTensor : (HxW) $height x $width")
         logger.DEBUG("outputMat : (HxW) ${outputMat.height()} x ${outputMat.width()}")
-
+        val (ratioH, ratioW) = ratioHW
         val result = postprocessor.process(
             outputMat,
             useDilate,
             doubleArrayOf
-                (originalBitmap.height.toDouble(),
+                (
+                originalBitmap.height.toDouble(),
                 originalBitmap.width.toDouble(),
-                ratioHW[0].toDouble(),
-                ratioHW[1].toDouble())
+                ratioH.toDouble(),
+                ratioW.toDouble(),
+            )
         )
 
         logger.DEBUG("Post process finished")

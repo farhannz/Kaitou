@@ -1,19 +1,19 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-    package="com.farhannz.kaitou">
+          package="com.farhannz.kaitou">
 
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
-    <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
-        android:name=".MainApplication"
-        android:label="Kaitou"
-        android:theme="@style/TransparentTheme"
-        android:usesCleartextTraffic="true">
+            android:name=".MainApplication"
+            android:label="Kaitou"
+            android:theme="@style/TransparentTheme"
+            android:usesCleartextTraffic="true">
         <activity android:name=".MainActivity"
-            android:exported="true">
+                  android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
@@ -24,9 +24,11 @@
                   android:exported="false"
                   android:excludeFromRecents="true"
                   android:taskAffinity=""
-                  android:launchMode="singleInstance"/>
+                  android:launchMode="singleInstance"
+        />
         <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse"/>
-        <service android:name=".ScreenshotServiceRework" android:exported="false" android:foregroundServiceType="mediaProjection"/>
+        <service android:name=".ScreenshotServiceRework" android:exported="false"
+                 android:foregroundServiceType="mediaProjection"/>
 
     </application>
 </manifest>

@@ -8,6 +8,7 @@ import android.graphics.Bitmap
 import android.graphics.Rect
 import android.provider.MediaStore
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
@@ -58,7 +59,7 @@ import org.apache.lucene.analysis.tokenattributes.*
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
 
-const val LOG_TAG = "OCRScreen"
+const val LOG_TAG = "UI.Components"
 val logger = Logger(LOG_TAG)
 
 fun tokenizeWithPOS(text: String): List<TokenInfo> {
@@ -171,12 +172,14 @@ fun DrawPolygons(
                 }
                 close()
             }
-            val color = if (isSelected) Color.Blue else Color.Red
+            val color = if (isSelected) Color(0xFF00E5FF) else Color(0xFF448888)
+            val width = if (isSelected) 2.dp.toPx() else 1.dp.toPx()
             drawPath(path, color = color.copy(alpha = 0.1f), style = Fill)
-            drawPath(path, color = color, style = Stroke(width = 1.dp.toPx()))
+            drawPath(path, color = color, style = Stroke(width = width))
         }
     }
 }
+
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun WordPolygonsOverlay(
@@ -186,8 +189,6 @@ fun WordPolygonsOverlay(
     screenSize: Pair<Int, Int>
 ) {
     var showPopup by remember { mutableStateOf(false) }
-    var tokens by remember { mutableStateOf<List<TokenInfo>>(emptyList()) }
-    var selectedWord by remember { mutableStateOf("") }
     val selectedIndices = remember { mutableStateListOf<Int>() }
     if (grouped == null) return
 
@@ -222,7 +223,7 @@ fun WordPolygonsOverlay(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color(0x51000000))
+                    .background(Color(0x10000000))
                     .windowInsetsPadding(WindowInsets.safeDrawing)
                     .pointerInput(wordsWithPolys, boundingBoxes) {
 //                logger.DEBUG(boundingBoxes.toString())
@@ -238,13 +239,14 @@ fun WordPolygonsOverlay(
                                 offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
                                         offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
                             }
-                            if (tappedIndex.value != -1) {
+                            if (tappedIndex.intValue != -1) {
                                 selectedIndices.clear()
                                 logger.DEBUG("$offset - $tappedIndex")
-                                selectedIndices.addAll(grouped.grouped[tappedIndex.value].second)
+                                selectedIndices.addAll(grouped.grouped[tappedIndex.intValue].second)
                                 showPopup = true
                             } else {
                                 if (!showPopup) onClicked()
+                                else showPopup = false
                             }
                         }
                     }
@@ -298,11 +300,13 @@ fun WordPolygonsOverlay(
         }
     }
 }
+
 fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
     val stream = ByteArrayOutputStream()
     bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
     return stream.toByteArray()
 }
+
 fun sendBitmapToServer(bitmap: Bitmap, callback: Callback) {
     val client = OkHttpClient()
     val mediaType = "image/jpeg".toMediaTypeOrNull()
@@ -322,7 +326,6 @@ fun sendBitmapToServer(bitmap: Bitmap, callback: Callback) {
         .build()
     client.newCall(request).enqueue(callback)
 }
-
 
 
 fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
@@ -353,10 +356,10 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalComposeApi::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
-fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
+fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
-    val groupedResult = remember {mutableListOf<GroupedResult>()}
-    when (val state = ocrState) {
+    val groupedResult = remember { mutableListOf<GroupedResult>() }
+    when (ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
                 modifier = Modifier
@@ -368,19 +371,35 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
                 LaunchedEffect(ocrState) {
                     withContext(Dispatchers.Default) {
                         val dets = OCRPipeline.detectTexts(inputImage)
-                        groupedResult.add(dets)
-                        ocrState = OCRUIState.Done
+                        if (dets.detections.boxes.isEmpty()) {
+                            ocrState = OCRUIState.NoDetections
+                        } else {
+                            groupedResult.add(dets)
+                            ocrState = OCRUIState.Done
+                        }
                     }
                 }
                 CircularProgressIndicator()
             }
         }
+
         is OCRUIState.Failed -> {
-            Toast.makeText(LocalContext.current,"Failed while processing OCR",Toast.LENGTH_SHORT).show()
+            Toast.makeText(LocalContext.current, "Failed while processing OCR", Toast.LENGTH_SHORT).show()
             onClicked()
         }
+
+        is OCRUIState.NoDetections -> {
+            Toast.makeText(LocalContext.current, "No texts detected, try zooming the image", Toast.LENGTH_SHORT).show()
+            onClicked()
+        }
+
         is OCRUIState.Done -> {
-            WordPolygonsOverlay(groupedResult.firstOrNull(), inputImage,onClicked, Pair(inputImage.width, inputImage.height))
+            WordPolygonsOverlay(
+                groupedResult.firstOrNull(),
+                inputImage,
+                onClicked,
+                Pair(inputImage.width, inputImage.height)
+            )
         }
     }
 }
@@ -388,5 +407,5 @@ fun OCRScreen(onClicked: () -> Unit, inputImage : Bitmap) {
 @Preview
 @Composable
 fun PreviewOCRScreen() {
-    OCRScreen(onClicked = {}, inputImage = createBitmap(100,100))
+    OCRScreen(onClicked = {}, inputImage = createBitmap(100, 100))
 }

@@ -1,6 +1,7 @@
 package com.farhannz.kaitou.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,7 +46,6 @@ fun BottomSheetContent(
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
     val maxHeight = screenHeight / 2
-
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -219,24 +219,27 @@ fun MorphemeItem(
             )
         }
 
-        Text(
-            text = reading,
-            fontSize = 14.sp,
-            color = Color(0xFF424242)
-        )
-
-        Text(
-            text = meaning,
-            fontSize = 14.sp,
-            color = Color(0xFF424242)
-        )
+        if (reading.isNotEmpty()) {
+            Text(
+                text = reading,
+                fontSize = 14.sp,
+                color = Color(0xFF424242)
+            )
+        }
+        if (meaning.isNotEmpty()) {
+            Text(
+                text = meaning,
+                fontSize = 14.sp,
+                color = Color(0xFF424242)
+            )
+        }
     }
 }
 
 @Preview
 @Composable
-fun PreviewPopUp(){
-    PopUpDict(TokenInfo("test","test","test"))
+fun PreviewPopUp() {
+    PopUpDict(TokenInfo("test", "test", "test"))
 }
 
 sealed class LookupState {
@@ -274,6 +277,7 @@ fun PopUpDict(
                 CircularProgressIndicator()
             }
         }
+
         is LookupState.Done -> {
             val wordEntry = state.result.first()
 
@@ -337,10 +341,12 @@ fun PopUpDict(
                 }
             }
         }
+
         is LookupState.NotFound -> {
-            Card(modifier = Modifier
-                .padding(horizontal = 16.dp, vertical = 8.dp)
-                .fillMaxWidth()
+            Card(
+                modifier = Modifier
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .fillMaxWidth()
             ) {
                 Text(
                     text = "Word not found in dictionary.",

@@ -9,6 +9,7 @@ import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import org.opencv.core.Point
 import org.opencv.imgproc.Imgproc
 import java.util.*
 
@@ -16,10 +17,10 @@ object OCRPipeline {
     private val LOG_TAG = OCRPipeline::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private lateinit var detection: DetectionPredictor // Text Detection Model
-    private lateinit var recognizer : RecognitionPredictor // Text Recognizer Model
+    private lateinit var recognizer: RecognitionPredictor // Text Recognizer Model
     private val batchSize = 1
 
-    private fun validateMat(input :Mat) : Mat{
+    private fun validateMat(input: Mat): Mat {
         var validMat = when (input.channels()) {
             1 -> input  // CV_8UC1
             3 -> input  // CV_8UC3
@@ -41,6 +42,7 @@ object OCRPipeline {
         }
         return validMat
     }
+
     fun initialize(context: Context) {
         detection = DetectionPredictor()
         recognizer = RecognitionPredictor()
@@ -48,19 +50,23 @@ object OCRPipeline {
         recognizer.initialize(context, "paddle", "ppocrv5_rec.nb")
     }
 
-    fun detectTexts(inputImage: Bitmap) : GroupedResult {
+    fun detectTexts(inputImage: Bitmap): GroupedResult {
         return detection.runInference(inputImage)
     }
 
-    fun extractTexts(inputImage: Bitmap, groupedResult: GroupedResult, selectedIndices: List<Int>) : List<String>{
+    fun extractTexts(inputImage: Bitmap, groupedResult: GroupedResult, selectedIndices: List<Int>): List<String> {
         val inputMat = Mat()
         try {
             Utils.bitmapToMat(inputImage, inputMat)
-            val boxes = selectedIndices.map {
-                groupedResult.detections.boxes[it]
-            }.sortedByDescending { box ->
-                box.maxOf { it.x }
-            }
+            val tolerance = 20  // Tune depending on character width
+
+            val boxes = selectedIndices
+                .map { groupedResult.detections.boxes[it] }
+                .groupBy { box -> (box.minOf { it.x } / tolerance).toInt() } // group by column
+                .toSortedMap(reverseOrder()) // right-to-left columns
+                .flatMap { (_, columnBoxes) ->
+                    columnBoxes.sortedBy { it.minOf { p -> p.y } } // top-to-bottom in column
+                }
 
             val textResults = mutableListOf<String>()
             for (batchStart in boxes.indices step batchSize) {
@@ -88,6 +94,7 @@ object OCRPipeline {
             inputMat.release()
         }
     }
+
     fun endToEndPipeline(inputImage: Bitmap): Pair<GroupedResult, List<String>> {
         val e2e = Date()
         val inputMat = Mat()
@@ -124,7 +131,7 @@ object OCRPipeline {
 
         logger.INFO("[stat] Recognition time ${Date().time - start.time}")
 
-        logger.INFO("[stat] Total end to end ${Date().time  - e2e.time}")
+        logger.INFO("[stat] Total end to end ${Date().time - e2e.time}")
         return Pair(det_result, textResults)
     }
 }
