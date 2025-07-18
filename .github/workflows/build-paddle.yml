@@ -1,0 +1,148 @@
+name: Build PaddleLite for Android
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/build-paddlelite.yml'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    env:
+      ANDROID_NDK_VERSION: r27d
+      ANDROID_API: 27
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_NDK: ${{ github.workspace }}/android-ndk
+      NDK_ROOT: ${{ github.workspace }}/android-ndk
+
+    steps:
+      - name: Checkout self
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt update
+          sudo apt install -y cmake ninja-build unzip python3-pip wget git-lfs build-essential \
+                              gcc-multilib g++-multilib zlib1g-dev
+          git lfs install
+          python3 -m pip install --upgrade pip wheel
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Cache Android NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: android-ndk
+          key: android-ndk-${{ env.ANDROID_NDK_VERSION }}
+
+      - name: Download Android NDK if not cached
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          mv android-ndk-${ANDROID_NDK_VERSION} android-ndk
+
+      - name: Checkout Paddle-Lite
+
+        uses: actions/checkout@v4
+
+        with:
+
+          repository: PaddlePaddle/Paddle-Lite
+
+          ref: v2.14-rc
+
+          path: Paddle-Lite
+
+          submodules: recursive
+
+
+      - name: Get Paddle-Lite commit hash
+
+        id: paddlelite-sha
+
+        run: |
+
+          echo "sha=$(git -C Paddle-Lite rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+        shell: bash
+
+
+      - name: Cache Paddle-Lite build
+        uses: actions/cache@v4
+        id: cache-paddle-lite-android-armv8
+        with:
+          # The path to cache
+          path: Paddle-Lite/build.lite.android.armv8.clang
+          # The key is composed of the OS, architecture, and the specific commit hash
+          key: paddlelite-build-${{ runner.os }}-android-armv8-${{ steps.paddlelite-sha.outputs.sha }}
+          # A restore key is used if the exact key is not found
+          restore-keys: |
+            paddlelite-build-${{ runner.os }}-android-armv8-
+
+
+
+            # NEW STEP: Modify build_android.sh for verbose logging
+      - name: Modify build_android.sh for debugging
+        run: |
+          # Navigate to the script's directory
+          cd Paddle-Lite/lite/tools
+          
+          # Use sed to remove the problematic lines
+          # -i (or -i.bak for backup) for in-place editing
+          # ^set\s+\-e$ matches 'set -e' at the start of a line
+          # ^set\s+\+x$ matches 'set +x' at the start of a line
+          echo "Modifying build_android.sh to enable full bash -x logging..."
+          sed -i '/^set\s\+-e$/d; /^set\s\++x$/d' build_android.sh
+          echo "Modification complete. Displaying first few lines of modified script:"
+          head -n 5 build_android.sh # Show first 5 lines to verify
+        shell: bash
+
+      - name: Build Paddle-Lite
+        if: steps.cache-paddle-lite-android-armv8.outputs.cache-hit != 'true'
+        run: |
+          # Change into the checked-out repository
+          cd Paddle-Lite
+          echo "--- Build Environment ---"
+          echo "NDK Path: $NDK_ROOT"
+          echo "Current Directory: $(pwd)"
+          echo "-------------------------"
+          # Ensure the build script is executable
+          chmod +x lite/tools/build_android.sh
+          echo "--- Starting Paddle-Lite Build ---"
+          # Execute the build script with all options
+          # Using bash -x provides verbose command tracing for easier debugging
+          bash -x ./lite/tools/build_android.sh \
+            --arch=armv8 \
+            --toolchain=clang \
+            --with_cv=on \
+            --with_extra=on \
+            --android_api_level=27 \
+            --with_java=on 2>&1 | tee ../paddlelite_build.log
+          
+          cat ../paddlelite_build.log
+
+          echo "------------------------------------"
+          echo "Build script finished with exit code: $?"
+          echo "--- Contents of build directory: ---"
+          ls -la build.lite.android.armv8.clang/ || echo "Build directory not found or is empty."
+        shell: bash
+
+      - name: Upload build logs
+        uses: actions/upload-artifact@v4
+        with:
+          name: paddlelite-build-log
+          path: paddlelite_build.log
+
+      - name: Upload PaddleLite output
+        uses: actions/upload-artifact@v4
+        with:
+          name: paddlelite-android-armv8
+          path: Paddle-Lite/build.lite.android.armv8.clang/inference_lite_lib.android.armv8
