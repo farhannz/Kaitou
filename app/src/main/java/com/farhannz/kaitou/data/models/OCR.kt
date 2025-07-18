@@ -31,7 +31,10 @@ data class PpOcrResponse(
 data class TokenInfo(
     val surface: String,   // raw form, for bbox
     val baseForm: String?,  // dictionary form, for lookup
-    val partOfSpeech: String
+    val partOfSpeech: String,
+    val reading: String = "",
+    val inflectionType: String = "",
+    val inflectionForm: String = ""
 )
 
 sealed class OCRUIState {

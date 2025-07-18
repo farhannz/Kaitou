@@ -7,6 +7,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.provider.MediaStore
+import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -66,7 +67,8 @@ fun tokenizeWithPOS(text: String): List<TokenInfo> {
     val tokenizer = JapaneseTokenizer(null, false, JapaneseTokenizer.Mode.NORMAL)
     tokenizer.setReader(StringReader(text))
     tokenizer.reset()
-
+    val readingAttr = tokenizer.getAttribute(ReadingAttribute::class.java)
+    val inflectionAttr = tokenizer.getAttribute(InflectionAttribute::class.java)
     val surfaceAttr = tokenizer.getAttribute(CharTermAttribute::class.java)
     val baseAttr = tokenizer.getAttribute(BaseFormAttribute::class.java)
     val posAttr = tokenizer.getAttribute(PartOfSpeechAttribute::class.java)
@@ -78,11 +80,15 @@ fun tokenizeWithPOS(text: String): List<TokenInfo> {
             TokenInfo(
                 surface = surfaceAttr.toString(),
                 baseForm = baseAttr?.baseForm ?: surfaceAttr.toString(),
-                partOfSpeech = posAttr.partOfSpeech ?: "未知"
+                partOfSpeech = posAttr.partOfSpeech ?: "未知",
+                reading = readingAttr?.reading ?: "",
+                inflectionType = inflectionAttr?.inflectionType ?: "",
+                inflectionForm = inflectionAttr?.inflectionForm ?: ""
             )
         )
     }
 
+    Log.d("TokenizeWithPOS", result.joinToString("\n"))
     tokenizer.end()
     tokenizer.close()
 
