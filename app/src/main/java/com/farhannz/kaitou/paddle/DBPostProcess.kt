@@ -1,6 +1,7 @@
 package com.farhannz.kaitou.paddle
 
 import android.graphics.Rect
+import android.os.Environment
 import clipper2.core.Path64
 import clipper2.core.Paths64
 import clipper2.core.Point64
@@ -17,14 +18,14 @@ import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
 import org.opencv.core.Scalar
+import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import org.opencv.utils.Converters
+import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
-
-
 
 
 // Reimplementation of PaddleX's DBPostProcess
@@ -57,6 +58,7 @@ class DBPostProcess(
         val maxY = points.maxOf { it.y }.toInt()
         return Rect(minX, minY, maxX, maxY)
     }
+
     fun getBoxFromRect(rect: Rect): List<Point> {
         return listOf(
             Point(rect.left.toDouble(), rect.top.toDouble()),   // top-left
@@ -94,13 +96,13 @@ class DBPostProcess(
         val visited = BooleanArray(n)
         val groups = mutableListOf<Pair<List<Point>, List<Int>>>()
 
-//        1 -> 2,5,6
+        //        1 -> 2,5,6
 //        2 -> 1,3,4
 //        3 -> 2
 //        4 -> 2
 //        $ -> 1
 //        6 -> 1
-        fun dfs(node: Int, currentPoints: MutableList<Point>, currentIndexes : MutableList<Int>) {
+        fun dfs(node: Int, currentPoints: MutableList<Point>, currentIndexes: MutableList<Int>) {
             visited[node] = true
             currentPoints.addAll(boxes[node])
             currentIndexes.add(node)
@@ -119,13 +121,13 @@ class DBPostProcess(
 
                 val rect = getBoundingRect(currentPoints)
                 val mergedBox = getBoxFromRect(rect)
-                groups.add(Pair(mergedBox,currentIndexes))
+                groups.add(Pair(mergedBox, currentIndexes))
             }
         }
         return groups
     }
 
-    fun process(pred: Mat, useDilation : Boolean,  imgShape: DoubleArray): GroupedResult {
+    fun process(pred: Mat, useDilation: Boolean, imgShape: DoubleArray): GroupedResult {
         val minMax = Core.minMaxLoc(pred)
         logger.DEBUG("Min: ${minMax.minVal}, Max: ${minMax.maxVal}")
         val (srcH, srcW, ratioH, ratioW) = imgShape
@@ -143,7 +145,7 @@ class DBPostProcess(
 //        Uncomment this to visualize the segmentation mask
 //        logger.DEBUG("(WxH) ${mask.cols()} x ${mask.rows()}")
 //        val file = File(Environment.getExternalStorageDirectory(), "Download/segmentation_debug.png")
-//        Imgcodecs.imwrite(file.absolutePath,mask)
+//        Imgcodecs.imwrite(file.absolutePath, mask)
         val boxes = when (boxType) {
             "poly" -> polygonsFromBitmap(pred, mask, srcW, srcH)
             "quad" -> boxesFromBitmap(pred, mask, srcW, srcH)
