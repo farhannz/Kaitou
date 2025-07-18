@@ -142,4 +142,6 @@ jobs:
           name: paddlelite-android-armv8
   
       - name: Debug directory
-        run: bash -x "ls ."
+        run: |
+          bash -x "ls . "
+        shell: bash
