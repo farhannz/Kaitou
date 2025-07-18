@@ -7,7 +7,7 @@ on:
       - '.github/workflows/build-paddlelite.yml'
 
 jobs:
-  build:
+  paddle:
     runs-on: ubuntu-latest
 
     env:
@@ -146,3 +146,14 @@ jobs:
         with:
           name: paddlelite-android-armv8
           path: Paddle-Lite/build.lite.android.armv8.clang/inference_lite_lib.android.armv8
+    
+    application:
+      needs: build_paddle
+      steps:
+      - name: Download prebuilt paddle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: paddlelite-android-armv8
+
+      - name: Debug directory
+        run: bash -x "ls *"
