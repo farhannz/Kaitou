@@ -6,38 +6,56 @@ import android.content.Intent
 import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
-import android.media.projection.*
 import android.os.IBinder
+import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Camera
+import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.ViewCompositionStrategy
+import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.*
 import androidx.savedstate.*
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
-import com.farhannz.kaitou.ui.components.DraggableOverlayContent
+import com.farhannz.kaitou.ui.components.FloatingButton
 import com.farhannz.kaitou.ui.components.OCRScreen
 import kotlin.math.roundToInt
 
 
 typealias ComposableContent = @Composable () -> Unit
+
 class OverlayService() : Service(), SavedStateRegistryOwner {
     private lateinit var composeView: ComposeView
     private lateinit var windowManager: WindowManager
-    private val LOG_TAG  = OverlayService::class.simpleName
+    private val LOG_TAG = OverlayService::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     private val lifecycleRegistry = LifecycleRegistry(this)
     private var isBound = false
     private val isButtonVisibleState = mutableStateOf(true)
 
-    private lateinit var mediaProjectionManager: MediaProjectionManager
+    private var overlayActive = false
 
 
     private var currentX = 0
@@ -47,7 +65,13 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
+    var hostActivity: OverlayHostActivity? = null
 
+    companion object {
+        const val OVERLAY_NOTIFICATION_ID = 1770
+        var instance: OverlayService? = null
+            private set
+    }
 
     private val connection = object : ServiceConnection {
 
@@ -55,15 +79,10 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             val binder = service as ScreenshotServiceRework.LocalBinder
             val screenshotService = binder.getService()
             isBound = true
-            // Register callback
             screenshotService.onScreenshotTaken = { bitmap ->
-                // Handle the captured screenshot
                 logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
-                // Do OCR or show it
                 showOCRScreen(bitmap)
-                isButtonVisibleState.value = true
             }
-//            // Trigger screenshot
             screenshotService.rc = MainActivity.MediaProjectionPermissionStore.resultCode
             screenshotService.dataIntent = MainActivity.MediaProjectionPermissionStore.dataIntent
             screenshotService.requestCapture()
@@ -76,7 +95,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     }
 
 
-    private fun createComposeView(content: ComposableContent) : ComposeView {
+    private fun createComposeView(content: ComposableContent): ComposeView {
         return ComposeView(this).apply {
             setViewTreeLifecycleOwner(this@OverlayService)
             setViewTreeSavedStateRegistryOwner(this@OverlayService)
@@ -95,12 +114,14 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     private fun showOCRScreen(image: Bitmap) {
         val intent = Intent(this, OverlayHostActivity::class.java).apply {
-           flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(intent)
         ocrScreen = createComposeView {
-            OCRScreen(onClicked = {
+            OCRScreen(
+                onClicked = {
                     removeOverlay()
+                    hostActivity?.finish()
                 },
                 inputImage = image
             )
@@ -115,8 +136,10 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             PixelFormat.TRANSLUCENT
         )
 
-        windowManager.addView(ocrScreen,layoutParams)
+        windowManager.addView(ocrScreen, layoutParams)
+        overlayActive = true
     }
+
     private fun captureScreenshot() {
         isButtonVisibleState.value = false
         if (isBound) {
@@ -129,13 +152,12 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             it.putExtra("resultCode", MainActivity.MediaProjectionPermissionStore.resultCode)
             it.putExtra("data", MainActivity.MediaProjectionPermissionStore.dataIntent)
         }
-        bindService(intent,connection, BIND_AUTO_CREATE)
+        bindService(intent, connection, BIND_AUTO_CREATE)
     }
 
     override fun onCreate() {
         super.onCreate()
         instance = this
-        savedStateRegistryController.performAttach() // you can ignore this line, becase performRestore method will auto call performAttach() first.
         savedStateRegistryController.performRestore(null)
         startForegroundServiceWithNotification()
 
@@ -158,32 +180,31 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         layoutParams.x = currentX
         layoutParams.y = currentY
         composeView = createComposeView {
-            DraggableOverlayContent(onCaptureClick = { captureScreenshot() }, onDrag = { dx, dy ->
-                    currentX -= dx.roundToInt()
-                    currentY -= dy.roundToInt()
+            val haptic = LocalHapticFeedback.current
+            FloatingButton(
+                onDrag = { dx, dy ->
+                    currentX -= dx
+                    currentY -= dy
                     layoutParams.x = currentX
                     layoutParams.y = currentY
                     windowManager.updateViewLayout(composeView, layoutParams)
                 },
-                isButtonVisibleState.value
+                onTap = {
+                    captureScreenshot()
+                    haptic.performHapticFeedback(HapticFeedbackType.Confirm)
+                },
+                onLongPress = {
+                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                    logger.DEBUG("LONG PRESSED")
+                },
+                isButtonVisibleState = isButtonVisibleState
             )
         }
-
-//        overlayView = composeView
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
         windowManager.addView(composeView, layoutParams)
-//        composeView.viewTreeObserver.addOnGlobalLayoutListener {
-//            Log.d("OverlayService", "Post-layout size: width=${composeView.width}, height=${composeView.height}")
-//        }
-
     }
 
 
-    companion object {
-        const val OVERLAY_NOTIFICATION_ID = 1770
-        var instance: OverlayService? = null
-            private set
-    }
     private fun startForegroundServiceWithNotification() {
         NotificationHelper.createNotificationChannels(this)
 
@@ -216,11 +237,14 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     fun removeOverlay() {
         ocrScreen?.let {
             try {
-                windowManager.removeView(it)
+                if (overlayActive) {
+                    windowManager.removeView(it)
+                    overlayActive = false
+                }
             } catch (e: Exception) {
-                logger.ERROR("Failed to remove overlay")
-//                Log.e("Overlay", "Failed to remove overlay", e)
+                logger.ERROR("Failed to remove overlay ${e.message.toString()}")
             }
+            isButtonVisibleState.value = true
             ocrScreen = null
         }
     }
