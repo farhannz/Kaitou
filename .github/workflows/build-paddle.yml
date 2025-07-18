@@ -1,5 +1,4 @@
 name: Build PaddleLite for Android
-
 on:
   workflow_dispatch:
   push:
@@ -50,30 +49,18 @@ jobs:
           mv android-ndk-${ANDROID_NDK_VERSION} android-ndk
 
       - name: Checkout Paddle-Lite
-
         uses: actions/checkout@v4
-
         with:
-
           repository: PaddlePaddle/Paddle-Lite
-
           ref: v2.14-rc
-
           path: Paddle-Lite
-
           submodules: recursive
-
-
+          
       - name: Get Paddle-Lite commit hash
-
         id: paddlelite-sha
-
         run: |
-
           echo "sha=$(git -C Paddle-Lite rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
         shell: bash
-
 
       - name: Cache Paddle-Lite build
         uses: actions/cache@v4
@@ -86,8 +73,6 @@ jobs:
           # A restore key is used if the exact key is not found
           restore-keys: |
             paddlelite-build-${{ runner.os }}-android-armv8-
-
-
 
             # NEW STEP: Modify build_android.sh for verbose logging
       - name: Modify build_android.sh for debugging
@@ -147,13 +132,14 @@ jobs:
           name: paddlelite-android-armv8
           path: Paddle-Lite/build.lite.android.armv8.clang/inference_lite_lib.android.armv8
     
-    application:
-      needs: build_paddle
-      steps:
+  applications:
+    needs: paddle
+    runs-on: ubuntu-latest
+    steps:
       - name: Download prebuilt paddle artifacts
         uses: actions/download-artifact@v4
         with:
           name: paddlelite-android-armv8
-
+  
       - name: Debug directory
         run: bash -x "ls *"
