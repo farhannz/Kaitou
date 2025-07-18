@@ -1,6 +1,8 @@
 # Gradle
 .gradle
 build/
+app/build
+app/.cxx
 
 captures
 
@@ -45,6 +47,8 @@ org.eclipse.buildship.core.prefs
 # Temporary API docs
 docs/api
 package-list-coil-base
+# Third parties
+third-party/
 
 # Mkdocs temporary serving folder
 docs-gen
