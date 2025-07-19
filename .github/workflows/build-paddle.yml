@@ -140,7 +140,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: paddlelite-android-armv8
-          paht: ./paddlelite-android-armv8
+          path: ./paddlelite-android-armv8
   
       - name: Extract artifact
         run: |
