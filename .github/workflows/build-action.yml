@@ -150,26 +150,6 @@ jobs:
         with:
           distribution: 'temurin'
           java-version: '21'
-
-      - name: Cache Android NDK
-        id: cache-ndk
-        uses: actions/cache@v4
-        with:
-          path: android-ndk
-          key: android-ndk-${{ env.ANDROID_NDK_VERSION }}
-
-      - name: Download Android NDK if not cached
-        if: steps.cache-ndk.outputs.cache-hit != 'true'
-        run: |
-          wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
-          echo "<expected_sha256>  android-ndk-${ANDROID_NDK_VERSION}-linux.zip" | sha256sum -c -
-          unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip
-          mv android-ndk-${ANDROID_NDK_VERSION} android-ndk
-      
-      - name: Write local.properties
-        run: |
-          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
-          echo "ndk.dir=${ANDROID_NDK}" >> local.properties   
           
       - name: Download prebuilt paddle artifacts
         uses: actions/download-artifact@v4
