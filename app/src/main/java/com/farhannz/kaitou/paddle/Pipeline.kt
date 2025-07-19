@@ -48,7 +48,7 @@ object OCRPipeline {
     fun initialize(context: Context) {
         detection = DetectionPredictor()
         recognizer = RecognitionPredictor()
-        detection.initialize(context, "paddle", "ppocrv5_det.nb")
+//        detection.initialize(context, "paddle", "ppocrv5_det.nb")
         recognizer.initialize(context, "paddle", "ppocrv5_rec.nb")
     }
 

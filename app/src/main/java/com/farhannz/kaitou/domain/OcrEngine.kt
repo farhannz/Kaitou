@@ -4,15 +4,25 @@ interface OcrEngine {
     suspend fun infer(image: RawImage): OcrResult
 }
 
+
+data class Point(
+    val x: Float,
+    val y: Float
+)
+
 data class DetectionResult(
-    val boxes: List<List<Pair<Float, Float>>>,  // [ [ (x, y), (x, y), ... ], ... ]
+    val boxes: List<List<Point>>,  // [ [ (x, y), (x, y), ... ], ... ]
     val scores: List<Float>
 )
 
+data class Group(
+    val region: List<Point>,         // The grouped region polygon
+    val memberBoxIndices: List<Int>  // Indices into DetectionResult.boxes
+)
 
 data class GroupedResult(
     val detections: DetectionResult,
-    val grouped: List<Pair<List<Pair<Float, Float>>, List<Int>>>
+    val grouped: List<Group>
 )
 
 data class RawImage(
@@ -45,7 +55,7 @@ data class RawImage(
 }
 
 sealed class OcrResult {
-    data class Detection(val result: GroupedResult) : OcrResult()
+    data class Detection(val det: GroupedResult) : OcrResult()
     data class Recognition(val texts: List<String>) : OcrResult()
     data class Error(val message: String, val exception: Throwable? = null) : OcrResult()
 }

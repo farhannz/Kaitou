@@ -28,24 +28,30 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
+import com.farhannz.kaitou.MainApplication
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.helpers.BoundaryViterbi
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.paddle.OCRPipeline
+import com.farhannz.kaitou.ui.components.utils.toCurrentImpl
+import com.farhannz.kaitou.ui.components.utils.toRawImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Callback
@@ -59,6 +65,7 @@ import org.apache.lucene.analysis.ja.tokenattributes.*
 import org.apache.lucene.analysis.tokenattributes.*
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
+import com.farhannz.kaitou.domain.GroupedResult as DomainGroupedResult
 
 const val LOG_TAG = "UI.Components"
 val logger = Logger(LOG_TAG)
@@ -164,10 +171,20 @@ fun DrawPolygons(
             poly.map { point -> Offset(point[0], point[1]) }
         }
     }
-
-    Canvas(modifier = Modifier.fillMaxSize()) {
-        val scaleX = size.width / screenSize.first.toFloat()
-        val scaleY = size.height / screenSize.second.toFloat()
+    val imageSize = Size(screenSize.first.toFloat(), screenSize.second.toFloat())
+    Canvas(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+    ) {
+        val scaleX = size.width / imageSize.width
+        val scaleY = size.height / imageSize.height
+        drawRect(
+            color = Color.Red,
+            topLeft = Offset(0f, 0f),
+            size = Size(imageSize.width * scaleX, imageSize.height * scaleY),
+            style = Stroke(width = 2.dp.toPx())
+        )
 
         rawPaths.forEachIndexed { index, poly ->
             val isSelected = selectedIndices.contains(index)
@@ -264,7 +281,7 @@ fun WordPolygonsOverlay(
                         var merged by remember { mutableStateOf<List<TokenInfo>?>(null) }
                         var selectedWord by remember { mutableStateOf("") }
 
-                        LaunchedEffect(selectedIndices) {
+                        LaunchedEffect(selectedIndices.joinToString("")) {
                             merged = null // reset before loading
                             withContext(Dispatchers.Default) {
                                 val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
@@ -365,6 +382,7 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
 fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
     val groupedResult = remember { mutableListOf<GroupedResult>() }
+    val context = LocalContext.current
     when (ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
@@ -376,12 +394,23 @@ fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
             ) {
                 LaunchedEffect(ocrState) {
                     withContext(Dispatchers.Default) {
-                        val dets = OCRPipeline.detectTexts(inputImage)
-                        if (dets.detections.boxes.isEmpty()) {
-                            ocrState = OCRUIState.NoDetections
-                        } else {
-                            groupedResult.add(dets)
-                            ocrState = OCRUIState.Done
+                        val engine = (context.applicationContext as MainApplication).detectionEngine
+                        val dets = engine.infer(inputImage.toRawImage())
+                        when (dets) {
+                            is OcrResult.Detection -> {
+                                groupedResult.add(dets.det.toCurrentImpl())
+                                ocrState = OCRUIState.Done
+                            }
+
+                            is OcrResult.Error -> {
+                                logger.ERROR(dets.message)
+                                ocrState = OCRUIState.NoDetections
+                            }
+
+                            is OcrResult.Recognition -> {
+                                logger.ERROR("Unexpected results, Expected: ${dets::class.simpleName} - Found: RecognitionResult")
+                                ocrState = OCRUIState.NoDetections
+                            }
                         }
                     }
                 }
@@ -410,7 +439,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
     }
 }
 
-@Preview
+//@Preview
 @Composable
 fun PreviewOCRScreen() {
     OCRScreen(onClicked = {}, inputImage = createBitmap(100, 100))

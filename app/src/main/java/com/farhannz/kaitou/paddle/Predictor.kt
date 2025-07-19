@@ -14,6 +14,7 @@ import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.domain.RawImage
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.ui.components.utils.toBitmap
+import com.farhannz.kaitou.ui.components.utils.toDomain
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
@@ -279,27 +280,8 @@ class DetectionPredictor : BasePredictor() {
         if (result.detections.boxes.isEmpty()) {
             return OcrResult.Error("No text detected")
         }
-        val detections = com.farhannz.kaitou.domain.DetectionResult(
-            result.detections.boxes.map { box ->
-                box.map {
-                    com.farhannz.kaitou.domain.Point(it.x.toFloat(), it.y.toFloat())
-                }
-            },
-            result.detections.scores.map { it.toFloat() }
-        )
 
-        val group = com.farhannz.kaitou.domain.GroupedResult(
-            detections,
-            result.grouped.map { group ->
-                com.farhannz.kaitou.domain.Group(
-                    group.first.map {
-                        com.farhannz.kaitou.domain.Point(it.x.toFloat(), it.y.toFloat())
-                    },
-                    group.second
-                )
-            }
-        )
-        return OcrResult.Detection(group)
+        return OcrResult.Detection(result.toDomain())
     }
 
     fun runInference(inputImage: Bitmap): GroupedResult {
