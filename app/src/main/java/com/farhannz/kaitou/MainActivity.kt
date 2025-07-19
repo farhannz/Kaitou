@@ -24,8 +24,8 @@ class MainActivity : ComponentActivity() {
 
     private val LOG_TAG = MainActivity::class.simpleName
     private val logger = Logger(LOG_TAG!!)
-    private var overlayGranted =  mutableStateOf(false)
-    private var screenshotGranted =  mutableStateOf(false)
+    private var overlayGranted = mutableStateOf(false)
+    private var screenshotGranted = mutableStateOf(false)
 
     object MediaProjectionPermissionStore {
         var resultCode: Int = Int.MIN_VALUE
@@ -68,11 +68,12 @@ class MainActivity : ComponentActivity() {
     }
 
 
-//    This is for the reworked version of ScreenshotService
+    //    This is for the reworked version of ScreenshotService
 //    Requesting Permission with the intent of Starting Service
 //    and caching the permission result via putExtra
     private val screenshotPermissionLauncher = registerForActivityResult(
-        ActivityResultContracts.StartActivityForResult()) { result ->
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
         if (result.resultCode == RESULT_OK && result.data != null) {
             logger.DEBUG("${result.resultCode} - ${result.data}")
             val intent = Intent(this, ScreenshotServiceRework::class.java).apply {
@@ -85,11 +86,11 @@ class MainActivity : ComponentActivity() {
             screenshotGranted.value = true
             ContextCompat.startForegroundService(this, intent)
         } else {
-            // Permission denied
             Toast.makeText(this, "Screen capture permission denied", Toast.LENGTH_SHORT).show()
             requestScreenShotPermission()
         }
-}
+    }
+
     private fun requestScreenShotPermission() {
         val mediaProjectionManager = getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager
         val intent = mediaProjectionManager.createScreenCaptureIntent()
@@ -106,10 +107,11 @@ class MainActivity : ComponentActivity() {
             requestOverlayPermission()
         }
     }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        OCRPipeline.initialize(this)
+//        OCRPipeline.initialize(this)
         lifecycleScope.launch {
             DatabaseManager.initializeWordsCache()
         }

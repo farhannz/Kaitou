@@ -4,6 +4,14 @@ interface OcrEngine {
     suspend fun infer(image: RawImage): OcrResult
 }
 
+interface TextRecognizer {
+    suspend fun recognize(image: RawImage, boxes: List<List<Point>>, selectedIndices: List<Int>): List<RecognizedText>
+}
+
+data class RecognizedText(
+    val text: String,
+    val box: List<Point>
+)
 
 data class Point(
     val x: Float,

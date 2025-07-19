@@ -2,6 +2,8 @@ package com.farhannz.kaitou.ui.components.utils
 
 import android.graphics.Bitmap
 import com.farhannz.kaitou.domain.RawImage
+import org.opencv.core.CvType
+import org.opencv.core.Mat
 
 
 fun Bitmap.toRawImage(): RawImage {
@@ -48,4 +50,24 @@ fun RawImage.toBitmap(): Bitmap {
     }
 
     return Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+}
+
+
+fun RawImage.toMat(): Mat {
+    require(channels in 1..4) { "Unsupported channel count: $channels" }
+
+    val matType = when (channels) {
+        1 -> CvType.CV_8UC1
+        2 -> CvType.CV_8UC2
+        3 -> CvType.CV_8UC3
+        4 -> CvType.CV_8UC4
+        else -> throw IllegalArgumentException("Unsupported number of channels: $channels")
+    }
+    val mat = Mat(
+        this.height,
+        this.width,
+        matType
+    )
+    mat.put(0, 0, this.bytes)
+    return mat
 }

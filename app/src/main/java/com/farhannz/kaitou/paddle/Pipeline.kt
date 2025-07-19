@@ -83,9 +83,9 @@ object OCRPipeline {
                     }
                     val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
                     Utils.matToBitmap(cropped, bm)
-                    val file = File(Environment.getExternalStorageDirectory(), "Pictures/PPOCR/cropped_$index.png")
-                    logger.DEBUG(file.absolutePath)
-                    saveBitmapToFileDirectly(bm, file.absolutePath)
+//                    val file = File(Environment.getExternalStorageDirectory(), "Pictures/PPOCR/cropped_$index.png")
+//                    logger.DEBUG(file.absolutePath)
+//                    saveBitmapToFileDirectly(bm, file.absolutePath)
                     bm
                 }
                 val batchTexts = recognizer.runBatchInference(croppedImages)

@@ -9,7 +9,6 @@ import android.graphics.Rect
 import android.provider.MediaStore
 import android.util.Log
 import android.widget.Toast
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.slideInVertically
@@ -35,10 +34,8 @@ import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.SubcomposeLayout
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
@@ -49,7 +46,6 @@ import com.farhannz.kaitou.helpers.BoundaryViterbi
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenHelper
-import com.farhannz.kaitou.paddle.OCRPipeline
 import com.farhannz.kaitou.ui.components.utils.toCurrentImpl
 import com.farhannz.kaitou.ui.components.utils.toRawImage
 import kotlinx.coroutines.Dispatchers
@@ -65,7 +61,7 @@ import org.apache.lucene.analysis.ja.tokenattributes.*
 import org.apache.lucene.analysis.tokenattributes.*
 import java.io.ByteArrayOutputStream
 import java.io.StringReader
-import com.farhannz.kaitou.domain.GroupedResult as DomainGroupedResult
+import com.farhannz.kaitou.domain.Point as DomainPoint
 
 const val LOG_TAG = "UI.Components"
 val logger = Logger(LOG_TAG)
@@ -243,6 +239,7 @@ fun WordPolygonsOverlay(
         }.map { it.measure(constraints) }
 
         val overlayPlaceable = subcompose("Overlay") {
+            val context = LocalContext.current
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -284,8 +281,17 @@ fun WordPolygonsOverlay(
                         LaunchedEffect(selectedIndices.joinToString("")) {
                             merged = null // reset before loading
                             withContext(Dispatchers.Default) {
-                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
-                                selectedWord = texts.joinToString("")
+                                val engine = (context.applicationContext as MainApplication).textRecognizer
+//                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
+//                                selectedWord = texts.joinToString("")
+                                val raw = originalImage.toRawImage()
+                                val domainBoxes = grouped.detections.boxes.map { box ->
+                                    box.map {
+                                        DomainPoint(it.x.toFloat(), it.y.toFloat())
+                                    }
+                                }
+                                selectedWord =
+                                    engine.recognize(raw, domainBoxes, selectedIndices.reversed()).first().text
                                 val tokens = tokenizeWithPOS(selectedWord)
                                 logger.DEBUG(selectedWord)
                                 val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {

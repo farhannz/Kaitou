@@ -3,6 +3,7 @@ package com.farhannz.kaitou.paddle
 //import org.opencv.core.*
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Environment
 import android.util.Size
 import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
@@ -78,7 +79,12 @@ class RecognitionPredictor : BasePredictor() {
     private val maxImageWidth = 3200
 
     override fun infer(inputImage: RawImage): OcrResult {
-        return OcrResult.Error("NOT YET IMPLEMENTED")
+        val input = inputImage.toBitmap()
+        val result = runInference(input)
+        if (result.isEmpty()) {
+            return OcrResult.Error("No texts detected")
+        }
+        return OcrResult.Recognition(listOf(result))
     }
 
     override fun initialize(context: Context, dirPath: String, fileName: String) {
