@@ -135,6 +135,12 @@ jobs:
   applications:
     needs: paddle
     runs-on: ubuntu-latest
+    env:
+      ANDROID_NDK_VERSION: r27d
+      ANDROID_API: 27
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_NDK: ${{ github.workspace }}/android-ndk
+      NDK_ROOT: ${{ github.workspace }}/android-ndk
     steps:
       - name: Checkout self
         uses: actions/checkout@v4
@@ -156,6 +162,7 @@ jobs:
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
           wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          echo "<expected_sha256>  android-ndk-${ANDROID_NDK_VERSION}-linux.zip" | sha256sum -c -
           unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip
           mv android-ndk-${ANDROID_NDK_VERSION} android-ndk
           
