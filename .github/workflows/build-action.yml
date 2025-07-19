@@ -2,8 +2,8 @@ name: Build Application
 on:
   workflow_dispatch:
   push:
-    paths:
-      - '.github/workflows/build-paddlelite.yml'
+    branches:
+      - master
 
 jobs:
   paddle:
