@@ -8,9 +8,12 @@ import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
 import com.baidu.paddle.lite.Tensor
 import com.farhannz.kaitou.data.models.GroupedResult
+import com.farhannz.kaitou.domain.DetectionResult
+import com.farhannz.kaitou.domain.Group
 import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.domain.RawImage
 import com.farhannz.kaitou.helpers.Logger
+import com.farhannz.kaitou.ui.components.utils.toBitmap
 import org.opencv.android.Utils
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
@@ -270,7 +273,33 @@ class DetectionPredictor : BasePredictor() {
     private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 2.0)
     private var resizedInfo: FloatArray = floatArrayOf(1f, 1f, 1f)
     override fun infer(inputImage: RawImage): OcrResult {
-        return OcrResult.Error("NOT YET IMPLEMENTED")
+        val input = inputImage.toBitmap()
+        val result = runInference(input)
+//        Conversion to ease refactor process
+        if (result.detections.boxes.isEmpty()) {
+            return OcrResult.Error("No text detected")
+        }
+        val detections = com.farhannz.kaitou.domain.DetectionResult(
+            result.detections.boxes.map { box ->
+                box.map {
+                    com.farhannz.kaitou.domain.Point(it.x.toFloat(), it.y.toFloat())
+                }
+            },
+            result.detections.scores.map { it.toFloat() }
+        )
+
+        val group = com.farhannz.kaitou.domain.GroupedResult(
+            detections,
+            result.grouped.map { group ->
+                com.farhannz.kaitou.domain.Group(
+                    group.first.map {
+                        com.farhannz.kaitou.domain.Point(it.x.toFloat(), it.y.toFloat())
+                    },
+                    group.second
+                )
+            }
+        )
+        return OcrResult.Detection(group)
     }
 
     fun runInference(inputImage: Bitmap): GroupedResult {
