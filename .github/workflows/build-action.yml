@@ -169,12 +169,13 @@ jobs:
       - name: Write local.properties
         run: |
           echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
-          echo "ndk.dir=${ANDROID_NDK}" >> local.properties    
-            - name: Download prebuilt paddle artifacts
-              uses: actions/download-artifact@v4
-              with:
-                name: paddlelite-android-armv8
-                path: ./paddlelite-android-armv8
+          echo "ndk.dir=${ANDROID_NDK}" >> local.properties   
+          
+      - name: Download prebuilt paddle artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: paddlelite-android-armv8
+          path: ./paddlelite-android-armv8
   
       - name: List contents of artifact folder
         run: ls -R ./paddlelite-android-armv8
