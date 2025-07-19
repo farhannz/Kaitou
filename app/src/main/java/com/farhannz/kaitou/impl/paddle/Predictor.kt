@@ -1,22 +1,19 @@
-package com.farhannz.kaitou.paddle
+package com.farhannz.kaitou.impl.paddle
 
 //import org.opencv.core.*
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Environment
 import android.util.Size
 import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
 import com.baidu.paddle.lite.Tensor
 import com.farhannz.kaitou.data.models.GroupedResult
-import com.farhannz.kaitou.domain.DetectionResult
-import com.farhannz.kaitou.domain.Group
 import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.domain.RawImage
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.ui.components.utils.toBitmap
-import com.farhannz.kaitou.ui.components.utils.toDomain
-import org.opencv.android.Utils
+import com.farhannz.kaitou.presentation.utils.toBitmap
+import com.farhannz.kaitou.presentation.utils.toDomain
+import com.farhannz.kaitou.presentation.utils.toMat
 import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import java.io.File
@@ -79,7 +76,7 @@ class RecognitionPredictor : BasePredictor() {
     private val maxImageWidth = 3200
 
     override fun infer(inputImage: RawImage): OcrResult {
-        val input = inputImage.toBitmap()
+        val input = inputImage.toMat()
         val result = runInference(input)
         if (result.isEmpty()) {
             return OcrResult.Error("No texts detected")
@@ -92,7 +89,7 @@ class RecognitionPredictor : BasePredictor() {
         labelDecoder = CTCLabelDecoder(context.assets.open("dict.txt").bufferedReader().readLines())
     }
 
-    fun runBatchInference(inputImages: List<Bitmap>): List<String> {
+    fun runBatchInference(inputImages: List<Mat>): List<String> {
         if (inputImages.isEmpty()) return emptyList()
 
         val e2e = Date()
@@ -142,7 +139,7 @@ class RecognitionPredictor : BasePredictor() {
         return texts
     }
 
-    fun runInference(inputImage: Bitmap): String {
+    fun runInference(inputImage: Mat): String {
         return runBatchInference(listOf(inputImage))[0]
     }
 
@@ -187,23 +184,12 @@ class RecognitionPredictor : BasePredictor() {
         return results
     }
 
-    fun preprocess(bitmap: Bitmap): Mat {
-        val inputMat = Mat()
-        try {
-            Utils.bitmapToMat(bitmap, inputMat)
-
-            // Convert to RGB as Paddle expects
-            Imgproc.cvtColor(inputMat, inputMat, Imgproc.COLOR_BGR2RGB)
-
-            val maxRatio = max(
-                bitmap.width.toFloat() / bitmap.height.toFloat(),
-                input_shape[1].toFloat() / input_shape[2].toFloat()
-            )
-            return resizeAndNormalizeImage(inputMat, maxRatio.toDouble())
-        } finally {
-            inputMat.release()
-            bitmap.recycle()
-        }
+    fun preprocess(image: Mat): Mat {
+        val maxRatio = max(
+            image.width().toFloat() / image.height().toFloat(),
+            input_shape[1].toFloat() / input_shape[2].toFloat()
+        )
+        return resizeAndNormalizeImage(image, maxRatio.toDouble())
     }
 
     fun postprocess(preds: Tensor): String {

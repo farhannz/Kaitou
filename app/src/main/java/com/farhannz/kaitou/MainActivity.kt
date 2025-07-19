@@ -2,7 +2,6 @@ package com.farhannz.kaitou
 
 import android.content.Intent
 import android.media.projection.MediaProjectionManager
-import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -10,14 +9,11 @@ import androidx.activity.ComponentActivity
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.paddle.OCRPipeline
 import kotlinx.coroutines.launch
-import org.opencv.android.OpenCVLoader
 import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {

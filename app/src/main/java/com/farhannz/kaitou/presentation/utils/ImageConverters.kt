@@ -1,9 +1,10 @@
-package com.farhannz.kaitou.ui.components.utils
+package com.farhannz.kaitou.presentation.utils
 
 import android.graphics.Bitmap
 import com.farhannz.kaitou.domain.RawImage
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import java.nio.ByteBuffer
 
 
 fun Bitmap.toRawImage(): RawImage {
@@ -70,4 +71,21 @@ fun RawImage.toMat(): Mat {
     )
     mat.put(0, 0, this.bytes)
     return mat
+}
+
+fun Mat.toRawImage(): RawImage {
+    val width = this.cols()
+    val height = this.rows()
+    val channels = this.channels()
+
+    val bufferSize = width * height * channels
+    val byteArray = ByteArray(bufferSize)
+    this.get(0, 0, byteArray)
+
+    return RawImage(
+        bytes = byteArray,
+        width = width,
+        height = height,
+        channels = channels
+    )
 }

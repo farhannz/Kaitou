@@ -1,46 +1,32 @@
 package com.farhannz.kaitou
 
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.ComponentName
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.ServiceConnection
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.os.Build
 import android.os.IBinder
-import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
-import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Camera
-import androidx.compose.material3.Icon
+import androidx.annotation.RequiresApi
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.ViewCompositionStrategy
-import androidx.compose.ui.unit.dp
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.*
 import androidx.savedstate.*
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
-import com.farhannz.kaitou.ui.components.FloatingButton
-import com.farhannz.kaitou.ui.components.OCRScreen
-import kotlin.math.roundToInt
+import com.farhannz.kaitou.presentation.components.FloatingButton
+import com.farhannz.kaitou.presentation.components.OCRScreen
 
 
 typealias ComposableContent = @Composable () -> Unit
@@ -54,6 +40,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private val lifecycleRegistry = LifecycleRegistry(this)
     private var isBound = false
     private val isButtonVisibleState = mutableStateOf(true)
+    private val isMenuVisisbleState = mutableStateOf(true)
 
     private var overlayActive = false
 
@@ -79,18 +66,26 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             val binder = service as ScreenshotServiceRework.LocalBinder
             val screenshotService = binder.getService()
             isBound = true
-            screenshotService.onScreenshotTaken = { bitmap ->
+            screenshotService?.onScreenshotTaken = { bitmap ->
                 logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
                 showOCRScreen(bitmap)
             }
-            screenshotService.rc = MainActivity.MediaProjectionPermissionStore.resultCode
-            screenshotService.dataIntent = MainActivity.MediaProjectionPermissionStore.dataIntent
-            screenshotService.requestCapture()
+            screenshotService?.rc = MainActivity.MediaProjectionPermissionStore.resultCode
+            screenshotService?.dataIntent = MainActivity.MediaProjectionPermissionStore.dataIntent
+            screenshotService?.requestCapture()
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {
             isBound = false
 //            screenshotService = null
+        }
+    }
+
+    private val shutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "SHUTDOWN_SERVICES") {
+                stopSelf()
+            }
         }
     }
 
@@ -155,8 +150,10 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         bindService(intent, connection, BIND_AUTO_CREATE)
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
+        registerReceiver(shutdownReceiver, IntentFilter("SHUTDOWN_SERVICES"), RECEIVER_NOT_EXPORTED)
         instance = this
         savedStateRegistryController.performRestore(null)
         startForegroundServiceWithNotification()
@@ -222,15 +219,14 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         if (::composeView.isInitialized) {
             windowManager.removeView(composeView)
         }
-        if (isBound) {
-            unbindService(connection)
-        }
-        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
+        unregisterReceiver(shutdownReceiver)
+        unbindService(connection)
         instance = null
+        lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
+        super.onDestroy()
     }
 
 

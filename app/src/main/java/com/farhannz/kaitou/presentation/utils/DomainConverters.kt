@@ -1,7 +1,8 @@
-package com.farhannz.kaitou.ui.components.utils
+package com.farhannz.kaitou.presentation.utils
 
 import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.data.models.DetectionResult
+import com.farhannz.kaitou.domain.Group
 import org.opencv.core.Point
 import com.farhannz.kaitou.domain.GroupedResult as DomainGroupedResult
 
@@ -23,7 +24,7 @@ fun GroupedResult.toDomain(): DomainGroupedResult {
     val group = DomainGroupedResult(
         detections,
         result.grouped.map { group ->
-            com.farhannz.kaitou.domain.Group(
+            Group(
                 group.first.map {
                     com.farhannz.kaitou.domain.Point(it.x.toFloat(), it.y.toFloat())
                 },

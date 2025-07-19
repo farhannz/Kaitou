@@ -1,18 +1,14 @@
-package com.farhannz.kaitou.paddle
+package com.farhannz.kaitou.impl.paddle
 
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Environment
-import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.helpers.Logger
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
-import java.io.File
 import java.util.*
 
 object OCRPipeline {
@@ -81,12 +77,7 @@ object OCRPipeline {
                     if (isVertical) {
                         Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
                     }
-                    val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
-                    Utils.matToBitmap(cropped, bm)
-//                    val file = File(Environment.getExternalStorageDirectory(), "Pictures/PPOCR/cropped_$index.png")
-//                    logger.DEBUG(file.absolutePath)
-//                    saveBitmapToFileDirectly(bm, file.absolutePath)
-                    bm
+                    cropped
                 }
                 val batchTexts = recognizer.runBatchInference(croppedImages)
                 textResults.addAll(batchTexts)
@@ -120,12 +111,8 @@ object OCRPipeline {
                 if (isVertical) {
                     Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
                 }
-
-                val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
-                Utils.matToBitmap(cropped, bm)
-                bm
+                cropped
             }
-
             // Run batch inference
             val batchTexts = recognizer.runBatchInference(croppedImages)
             textResults.addAll(batchTexts)

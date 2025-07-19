@@ -1,4 +1,4 @@
-package com.farhannz.kaitou.ui.components
+package com.farhannz.kaitou.presentation.components
 
 import android.annotation.SuppressLint
 import android.content.ContentResolver
@@ -46,8 +46,8 @@ import com.farhannz.kaitou.helpers.BoundaryViterbi
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenHelper
-import com.farhannz.kaitou.ui.components.utils.toCurrentImpl
-import com.farhannz.kaitou.ui.components.utils.toRawImage
+import com.farhannz.kaitou.presentation.utils.toCurrentImpl
+import com.farhannz.kaitou.presentation.utils.toRawImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.Callback
@@ -291,7 +291,8 @@ fun WordPolygonsOverlay(
                                     }
                                 }
                                 selectedWord =
-                                    engine.recognize(raw, domainBoxes, selectedIndices.reversed()).first().text
+                                    engine.recognize(raw, domainBoxes, selectedIndices)
+                                        .joinToString("") { it.text }
                                 val tokens = tokenizeWithPOS(selectedWord)
                                 logger.DEBUG(selectedWord)
                                 val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {

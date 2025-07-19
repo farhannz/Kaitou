@@ -1,4 +1,4 @@
-package com.farhannz.kaitou.paddle
+package com.farhannz.kaitou.impl.paddle
 
 import android.graphics.Bitmap
 import android.graphics.Canvas

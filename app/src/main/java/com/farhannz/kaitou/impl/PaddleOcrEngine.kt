@@ -1,26 +1,20 @@
 package com.farhannz.kaitou.impl
 
 import android.content.Context
-import android.graphics.Bitmap
-import android.os.Environment
 import android.util.Log
-import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.domain.OcrEngine
 import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.domain.Point
 import com.farhannz.kaitou.domain.RawImage
 import com.farhannz.kaitou.domain.RecognizedText
 import com.farhannz.kaitou.domain.TextRecognizer
-import com.farhannz.kaitou.paddle.BasePredictor
-import com.farhannz.kaitou.paddle.DetectionPredictor
-import com.farhannz.kaitou.paddle.RecognitionPredictor
-import com.farhannz.kaitou.paddle.cropFromBox
-import com.farhannz.kaitou.ui.components.utils.toMat
-import com.farhannz.kaitou.ui.components.utils.toRawImage
-import org.opencv.android.Utils
+import com.farhannz.kaitou.impl.paddle.BasePredictor
+import com.farhannz.kaitou.impl.paddle.DetectionPredictor
+import com.farhannz.kaitou.impl.paddle.RecognitionPredictor
+import com.farhannz.kaitou.impl.paddle.cropFromBox
+import com.farhannz.kaitou.presentation.utils.toMat
+import com.farhannz.kaitou.presentation.utils.toRawImage
 import org.opencv.core.Core
-import org.opencv.imgcodecs.Imgcodecs
-import java.io.File
 import kotlin.collections.component1
 import kotlin.collections.component2
 import org.opencv.core.Point as CvPoint
@@ -73,15 +67,13 @@ class PaddleTextRecognizer(
             }
         val mat = image.toMat()
         var idx = 0
-        return boxes.mapNotNull { box ->
+        val results = boxes.mapNotNull { box ->
             val cropped = cropFromBox(mat, box.map { CvPoint(it.x.toDouble(), it.y.toDouble()) })
             val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.25f
             if (isVertical) {
                 Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
             }
-            val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
-            Utils.matToBitmap(cropped, bm)
-            val croppedRaw = bm.toRawImage()
+            val croppedRaw = cropped.toRawImage()
             when (val result = recognitionEngine.infer(croppedRaw)) {
                 is OcrResult.Recognition -> {
                     idx++
@@ -91,5 +83,6 @@ class PaddleTextRecognizer(
                 else -> null
             }
         }
+        return results
     }
 }

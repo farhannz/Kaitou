@@ -1,7 +1,6 @@
-package com.farhannz.kaitou.paddle
+package com.farhannz.kaitou.impl.paddle
 
-import kotlin.math.max
-import kotlin.math.min
+import kotlin.text.iterator
 
 abstract class BaseRecLabelDecoder(
     characterList: List<String>? = null,

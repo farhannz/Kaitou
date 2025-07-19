@@ -6,8 +6,10 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.graphics.Bitmap
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -31,6 +33,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
+import java.lang.ref.WeakReference
 
 
 fun Image.toBitmap(): Bitmap {
@@ -49,30 +52,42 @@ fun Image.toBitmap(): Bitmap {
     }
 }
 
-class ScreenshotServiceRework : Service () {
+class ScreenshotServiceRework : Service() {
 
 
-    val LOG_TAG = this::class.simpleName;
+    private val LOG_TAG = this::class.simpleName;
     private val logger = Logger(LOG_TAG!!)
-    var rc : Int = Int.MIN_VALUE
-    var dataIntent:Intent? = null
-    private val binder = LocalBinder()
+    private val binder = LocalBinder(this@ScreenshotServiceRework)
 
     private var mediaProjectionManager: MediaProjectionManager? = null
-    private var mediaProjection : MediaProjection? = null
-    private var imageReader : ImageReader? = null
+    private var mediaProjection: MediaProjection? = null
+    private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
 
-//    Callback
+    var rc: Int = Int.MIN_VALUE
+    var dataIntent: Intent? = null
+
+    //    Callback
     var onScreenshotTaken: ((Bitmap) -> Unit)? = null
 
-    inner class LocalBinder : Binder() {
-        fun getService(): ScreenshotServiceRework = this@ScreenshotServiceRework
+    class LocalBinder(service: ScreenshotServiceRework) : Binder() {
+        private var serviceRef: WeakReference<ScreenshotServiceRework>? = WeakReference(service)
+        fun getService(): ScreenshotServiceRework? = serviceRef?.get()
+        fun clearReference() {
+            serviceRef = null
+        }
     }
 
-    override fun onBind(intent: Intent?): IBinder {
-        return binder
+    private val shutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "SHUTDOWN_SERVICES") {
+                binder.clearReference()
+                stopSelf()
+            }
+        }
     }
+
+    override fun onBind(intent: Intent?): IBinder = binder
 
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -84,6 +99,7 @@ class ScreenshotServiceRework : Service () {
 //                logger.INFO("Screenshot Captured")
 //                requestCapture()
             }
+
             "START_SERVICE" -> {
                 val captured = mapOf(
                     "resultCode" to intent.getIntExtra("resultCode", Int.MIN_VALUE),
@@ -92,7 +108,11 @@ class ScreenshotServiceRework : Service () {
                 if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
                     rc = captured["resultCode"] as Int
                     dataIntent = captured["data"] as Intent
-                    mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(rc, dataIntent!!)
+                    mediaProjection =
+                        (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
+                            rc,
+                            dataIntent!!
+                        )
                     logger.DEBUG("MediaProjection Permission Granted")
                     val metrics = resources.displayMetrics
                     val width = metrics.widthPixels
@@ -115,12 +135,8 @@ class ScreenshotServiceRework : Service () {
     }
 
     fun excludeWindowInsets(bitmap: Bitmap): Bitmap {
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val windowMetrics = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager.currentWindowMetrics
-        } else {
-            return bitmap // Can't get insets below API 30 easily
-        }
+        val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        val windowMetrics = windowManager.currentWindowMetrics
 
         val insets = windowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
 
@@ -180,8 +196,10 @@ class ScreenshotServiceRework : Service () {
         prepareScreenshot()
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
+        registerReceiver(shutdownReceiver, IntentFilter("SHUTDOWN_SERVICES"), RECEIVER_NOT_EXPORTED)
         val captureChannel = NotificationChannel(
             "ScreenshotRework",
             "Screen Capture",
@@ -202,8 +220,14 @@ class ScreenshotServiceRework : Service () {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        onScreenshotTaken = null
+        imageReader?.close()
+        virtualDisplay?.surface = null
         virtualDisplay?.release()
         mediaProjection?.stop()
+        mediaProjection = null
+        virtualDisplay = null
+        unregisterReceiver(shutdownReceiver)
+        super.onDestroy()
     }
 }
