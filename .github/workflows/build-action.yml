@@ -165,12 +165,16 @@ jobs:
           echo "<expected_sha256>  android-ndk-${ANDROID_NDK_VERSION}-linux.zip" | sha256sum -c -
           unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip
           mv android-ndk-${ANDROID_NDK_VERSION} android-ndk
-          
-      - name: Download prebuilt paddle artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: paddlelite-android-armv8
-          path: ./paddlelite-android-armv8
+      
+      - name: Write local.properties
+        run: |
+          echo "sdk.dir=${ANDROID_SDK_ROOT}" > local.properties
+          echo "ndk.dir=${ANDROID_NDK}" >> local.properties    
+            - name: Download prebuilt paddle artifacts
+              uses: actions/download-artifact@v4
+              with:
+                name: paddlelite-android-armv8
+                path: ./paddlelite-android-armv8
   
       - name: List contents of artifact folder
         run: ls -R ./paddlelite-android-armv8
@@ -179,6 +183,7 @@ jobs:
         run: |
             mkdir -p app/src/main/jniLibs/arm64-v8a
             mkdir -p app/libs
+            cp -r ./paddlelite-android-armv8/cxx/include/* app/src/main/cpp/include/*
             cp ./paddlelite-android-armv8/java/jar/PaddlePredictor.jar app/libs
             cp ./paddlelite-android-armv8/java/so/libpaddle_lite_jni.so app/src/main/jniLibs/arm64-v8a/libpaddle_lite_jni.so
             cp ./paddlelite-android-armv8/cxx/lib/libpaddle_light_api_shared.so app/src/main/jniLibs/arm64-v8a/libpaddle_light_api_shared.so 
@@ -188,3 +193,8 @@ jobs:
             chmod +x ./gradlew
             ./gradlew assembleDebug
             
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
