@@ -1,4 +1,4 @@
-name: Build PaddleLite for Android
+name: Build Application
 on:
   workflow_dispatch:
   push:
@@ -132,7 +132,7 @@ jobs:
           name: paddlelite-android-armv8
           path: Paddle-Lite/build.lite.android.armv8.clang/inference_lite_lib.android.armv8
     
-  applications:
+  armv8:
     needs: paddle
     runs-on: ubuntu-latest
     env:
@@ -182,4 +182,8 @@ jobs:
             cp ./paddlelite-android-armv8/java/jar/PaddlePredictor.jar app/libs
             cp ./paddlelite-android-armv8/java/so/libpaddle_lite_jni.so app/src/main/jniLibs/arm64-v8a/libpaddle_lite_jni.so
             cp ./paddlelite-android-armv8/cxx/lib/libpaddle_light_api_shared.so app/src/main/jniLibs/arm64-v8a/libpaddle_light_api_shared.so 
+      
+      - name: Building the application (debug)
+        run: |
+            ./gradlew assembleDebug
             
