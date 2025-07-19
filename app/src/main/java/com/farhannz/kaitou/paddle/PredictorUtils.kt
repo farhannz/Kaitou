@@ -1,6 +1,7 @@
 package com.farhannz.kaitou.paddle
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import com.farhannz.kaitou.helpers.Logger
 import androidx.core.graphics.scale
@@ -13,7 +14,9 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.FloatBuffer
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.sqrt
+import androidx.core.graphics.createBitmap
 
 private val LOG_TAG = "PredictorUtilsNew"
 private val logger = Logger(LOG_TAG)
@@ -30,6 +33,7 @@ object PaddleHelper {
     @JvmStatic
     external fun copyBufferToAddress(buffer: FloatBuffer, nativePtr: Long, length: Int)
 }
+
 fun Tensor.safeNativeHandle(): Long {
     return try {
         val field = this::class.java.getDeclaredField("nativePointer")
@@ -51,39 +55,63 @@ private fun feedTensor(tensor: Tensor, mat: Mat, inputShape: List<Long>, buffer:
         }
     }
     buffer.flip()
-    PaddleHelper.copyBufferToAddress(buffer, tensor.safeNativeHandle(), ((1 * inputShape[0] * inputShape[1] * inputShape[2]).toInt()))
+    PaddleHelper.copyBufferToAddress(
+        buffer,
+        tensor.safeNativeHandle(),
+        ((1 * inputShape[0] * inputShape[1] * inputShape[2]).toInt())
+    )
 }
 
-fun resizeToMultipleOf32(bitmap: Bitmap, maxSizeLen: Int): Pair<Bitmap, FloatArray> {
-    val (w, h) = bitmap.width to bitmap.height
-    var ratio = 1f
+fun letterboxBitmap(
+    bitmap: Bitmap,
+    targetWidth: Int = 960,
+    targetHeight: Int = 960,
+    padColor: Int = Color.WHITE
+): Pair<Bitmap, FloatArray> {
+    val scale = min(
+        targetWidth.toFloat() / bitmap.width,
+        targetHeight.toFloat() / bitmap.height
+    )
+
+    val newW = (bitmap.width * scale).toInt()
+    val newH = (bitmap.height * scale).toInt()
+
+    val resized = bitmap.scale(newW, newH)
+    val padded = createBitmap(targetWidth, targetHeight)
+
+    val canvas = Canvas(padded)
+    canvas.drawColor(padColor)
+    canvas.drawBitmap(resized, ((targetWidth - newW) / 2f), ((targetHeight - newH) / 2f), null)
+
+    val padX = (targetWidth - newW) / 2f
+    val padY = (targetHeight - newH) / 2f
+
+    // Scale + pad info, useful for restoring box coords later
+    return padded to floatArrayOf(scale, padX, padY)
+}
+
+fun resizeBitmapToModelInput(
+    bitmap: Bitmap,
+    maxSizeLen: Int = 960
+): Pair<Bitmap, FloatArray> {
+    val w = bitmap.width
+    val h = bitmap.height
     val maxWh = maxOf(w, h)
 
-    if (maxWh > maxSizeLen) {
-        ratio = if (h > w) maxSizeLen.toFloat() / h else maxSizeLen.toFloat() / w
-    }
+    val scaleRatio = if (maxWh > maxSizeLen) maxSizeLen.toFloat() / maxWh else 1f
 
-    var resizeH = (h * ratio).toInt()
-    var resizeW = (w * ratio).toInt()
+    var resizedW = (w * scaleRatio).toInt().coerceAtLeast(32)
+    var resizedH = (h * scaleRatio).toInt().coerceAtLeast(32)
 
-    resizeH = when {
-        resizeH % 32 == 0 -> resizeH
-        resizeH / 32 < 1 + 1e-5 -> 32
-        else -> (resizeH / 32) * 32
-    }
+    resizedW = (resizedW / 32) * 32
+    resizedH = (resizedH / 32) * 32
 
-    resizeW = when {
-        resizeW % 32 == 0 -> resizeW
-        resizeW / 32 < 1 + 1e-5 -> 32
-        else -> (resizeW / 32) * 32
-    }
+    val resizedBitmap = bitmap.scale(resizedW, resizedH)
 
-    val resized = bitmap.scale(resizeW, resizeH)
-    val ratioHW = floatArrayOf(
-        resizeH.toFloat() / h,
-        resizeW.toFloat() / w
-    )
-    return Pair(resized, ratioHW)
+    val ratioH = resizedH.toFloat() / h
+    val ratioW = resizedW.toFloat() / w
+
+    return Pair(resizedBitmap, floatArrayOf(ratioH, ratioW))
 }
 
 
@@ -92,6 +120,7 @@ fun norm(p1: Point, p2: Point): Double {
     val dy = p1.y - p2.y
     return sqrt(dx * dx + dy * dy)
 }
+
 fun cropFromBox(image: Mat, box: List<Point>): Mat {
 
     if (box.size != 4) throw IllegalArgumentException("Box must have 4 points")
@@ -122,10 +151,12 @@ fun cropFromBox(image: Mat, box: List<Point>): Mat {
     transform.release()
     return warped
 }
-fun bitmapToFloatArray(bitmap: Bitmap,
-                       normalize: Boolean,
-                       mean: FloatArray = floatArrayOf(0.485f, 0.456f, 0.406f),
-                       std: FloatArray = floatArrayOf(0.229f, 0.224f, 0.225f)
+
+fun bitmapToFloatArray(
+    bitmap: Bitmap,
+    normalize: Boolean,
+    mean: FloatArray = floatArrayOf(0.485f, 0.456f, 0.406f),
+    std: FloatArray = floatArrayOf(0.229f, 0.224f, 0.225f)
 ): FloatArray {
     val pixels = IntArray(bitmap.width * bitmap.height)
     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
@@ -149,6 +180,7 @@ fun bitmapToFloatArray(bitmap: Bitmap,
         }
     }
 }
+
 fun saveBitmapToFileDirectly(bitmap: Bitmap, path: String): Boolean {
     return try {
         val file = File(path)

@@ -2,6 +2,7 @@ package com.farhannz.kaitou.paddle
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Environment
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.helpers.Logger
@@ -9,8 +10,9 @@ import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import org.opencv.core.Point
+import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
+import java.io.File
 import java.util.*
 
 object OCRPipeline {
@@ -73,15 +75,17 @@ object OCRPipeline {
                 val batchEnd = minOf(batchStart + batchSize, boxes.size)
                 val batchBoxes = boxes.subList(batchStart, batchEnd)
                 // Prepare batch of cropped images
-                val croppedImages = batchBoxes.map { box ->
+                val croppedImages = batchBoxes.mapIndexed { index, box ->
                     val cropped = cropFromBox(inputMat, box)
                     val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.25f
                     if (isVertical) {
                         Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
                     }
-
                     val bm = createBitmap(cropped.width(), cropped.height(), Bitmap.Config.ARGB_8888)
                     Utils.matToBitmap(cropped, bm)
+                    val file = File(Environment.getExternalStorageDirectory(), "Pictures/PPOCR/cropped_$index.png")
+                    logger.DEBUG(file.absolutePath)
+                    saveBitmapToFileDirectly(bm, file.absolutePath)
                     bm
                 }
                 val batchTexts = recognizer.runBatchInference(croppedImages)
@@ -100,14 +104,14 @@ object OCRPipeline {
         val inputMat = Mat()
         Utils.bitmapToMat(inputImage, inputMat)
         var start = Date()
-        val det_result = detection.runInference(inputImage)
+        val detResult = detection.runInference(inputImage)
         logger.INFO("[stat] Detection time ${Date().time - start.time}")
         val textResults = mutableListOf<String>()
         start = Date()
 // Process detections in batches
-        for (batchStart in det_result.detections.boxes.indices step batchSize) {
-            val batchEnd = minOf(batchStart + batchSize, det_result.detections.boxes.size)
-            val batchBoxes = det_result.detections.boxes.subList(batchStart, batchEnd)
+        for (batchStart in detResult.detections.boxes.indices step batchSize) {
+            val batchEnd = minOf(batchStart + batchSize, detResult.detections.boxes.size)
+            val batchBoxes = detResult.detections.boxes.subList(batchStart, batchEnd)
 
             // Prepare batch of cropped images
             val croppedImages = batchBoxes.map { box ->
@@ -132,6 +136,6 @@ object OCRPipeline {
         logger.INFO("[stat] Recognition time ${Date().time - start.time}")
 
         logger.INFO("[stat] Total end to end ${Date().time - e2e.time}")
-        return Pair(det_result, textResults)
+        return Pair(detResult, textResults)
     }
 }

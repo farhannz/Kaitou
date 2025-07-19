@@ -3,7 +3,6 @@ package com.farhannz.kaitou.paddle
 //import org.opencv.core.*
 import android.content.Context
 import android.graphics.Bitmap
-import android.os.Environment
 import android.util.Size
 import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
@@ -12,7 +11,6 @@ import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.helpers.Logger
 import org.opencv.android.Utils
 import org.opencv.core.*
-import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
@@ -262,16 +260,15 @@ class DetectionPredictor : BasePredictor() {
 
     private var inputShape = longArrayOf(3, 960, 960)
     private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 2.0)
-    private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
+    private var resizedInfo: FloatArray = floatArrayOf(1f, 1f, 1f)
     fun runInference(inputImage: Bitmap): GroupedResult {
         val end2end = Date()
         logger.INFO("Running inference")
         var start = Date()
-        val (preprocessed, resized) = preprocess(inputImage, inputShape.maxOrNull()?.toInt() ?: 0)
+        val (preprocessed, resized) = preprocess(inputImage, inputShape)
         var end = Date()
         var inferenceTime = (end.time - start.time)
 //        logger.INFO("[stat] Preprocessing time $inferenceTime ms");
-
 
         val inputTensor = predictor.getInput(0)
         inputTensor.resize(longArrayOf(1, 3, resized.width.toLong(), resized.height.toLong()))
@@ -329,15 +326,14 @@ class DetectionPredictor : BasePredictor() {
         return postprocessed
     }
 
-    fun preprocess(bitmap: Bitmap, maxSideLen: Int): Pair<FloatArray, Size> {
-        val (resized, ratios) = resizeToMultipleOf32(bitmap, maxSideLen)
-//        val file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")
-//        saveBitmapToFileDirectly(resized,file.absolutePath)
-        ratioHW = ratios
-//        val file = File(Environment.getExternalStorageDirectory(), "Download/resized.png")
-//        val debugImg = Mat()
-//        Utils.bitmapToMat(resized, debugImg)
-//        Imgcodecs.imwrite(file.absolutePath, debugImg)
+    fun preprocess(bitmap: Bitmap, inputShape: LongArray): Pair<FloatArray, Size> {
+//        var file = File(Environment.getExternalStorageDirectory(), "Download/ocr_input_preview.png")
+//        saveBitmapToFileDirectly(bitmap, file.absolutePath)
+//        logger.DEBUG("Before rezie Bitmap WxH: ${bitmap.width}x${bitmap.height}")
+        val (C, H, W) = inputShape
+        val (resized, info) = letterboxBitmap(bitmap, 960, 960)
+        resizedInfo = info
+        logger.DEBUG("ScaleRatio: ${resizedInfo.joinToString(",")} → Resized WxH: ${resized.width} x ${resized.height}")
 
         // Convert to float array with normalization
         val floatArray = bitmapToFloatArray(resized, normalize = true)
@@ -359,16 +355,16 @@ class DetectionPredictor : BasePredictor() {
         }
         logger.DEBUG("outputTensor : (HxW) $height x $width")
         logger.DEBUG("outputMat : (HxW) ${outputMat.height()} x ${outputMat.width()}")
-        val (ratioH, ratioW) = ratioHW
+        val (scale, padX, padY) = resizedInfo
         val result = postprocessor.process(
             outputMat,
             useDilate,
-            doubleArrayOf
-                (
-                originalBitmap.height.toDouble(),
+            doubleArrayOf(
                 originalBitmap.width.toDouble(),
-                ratioH.toDouble(),
-                ratioW.toDouble(),
+                originalBitmap.height.toDouble(),
+                scale.toDouble(),
+                padX.toDouble(),
+                padY.toDouble()
             )
         )
 

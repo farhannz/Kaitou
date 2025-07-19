@@ -8,9 +8,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.farhannz.kaitou.data.models.*
-import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.posMapping
-import kotlinx.serialization.json.Json
 
 @Dao
 interface DictionaryDao {
@@ -36,47 +34,28 @@ interface DictionaryDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGlosses(glosses: List<Gloss>)
-
-    suspend fun buildSurfaceToUniDicMap(): Map<String, String> {
-        val rows = DatabaseManager.getDatabase().dictionaryDao().getAllSurfacePos()
-
-        val forward = posMapping.flatMap { (uni, jmList) ->
-            jmList.map { jmRaw ->
-                val clean = jmRaw.removeSurrounding("\"")   // drop leading/trailing "
-                clean to uni
-            }
-        }.toMap()         // JMdict tag -> UniDic tag
-
-        val json = Json { ignoreUnknownKeys = true }
-
-        return rows.groupBy({ it.surface }, { it.jmdictPos })
-            .mapValues { (_, jmdictTags) ->
-                jmdictTags
-                    .asSequence()
-                    .flatMap { json.decodeFromString<List<String>>(it) } // 🔥 Proper parse here
-                    .map { it.trim() }
-                    .firstNotNullOfOrNull { forward[it] }
-                    ?: "未知語"
-            }
-    }
-    // tiny projection: surface + JMdict POS
     data class SurfacePos(val surface: String, val jmdictPos: String)
 
-    @Query("""
+    @Query(
+        """
     SELECT DISTINCT k.text AS surface, s.part_of_speech AS jmdictPos
     FROM kanji k
     JOIN sense s ON k.word_id = s.word_id
-""")
+"""
+    )
     suspend fun getKanjiSurfacePos(): List<SurfacePos>
 
-    @Query("""
+    @Query(
+        """
     SELECT DISTINCT k.text AS surface, s.part_of_speech AS jmdictPos
     FROM kana k
     JOIN sense s ON k.word_id = s.word_id
-""")
+"""
+    )
     suspend fun getKanaSurfacePos(): List<SurfacePos>
 
-    @Query("""
+    @Query(
+        """
     SELECT DISTINCT text AS surface, part_of_speech AS jmdictPos
     FROM (
         SELECT k.text, s.part_of_speech
@@ -89,18 +68,21 @@ interface DictionaryDao {
         FROM kana k
         JOIN sense s ON k.word_id = s.word_id
     )
-""")
+"""
+    )
     suspend fun getAllSurfacePos(): List<SurfacePos>
 
     @Transaction
-    @Query("""
+    @Query(
+        """
         SELECT * FROM words 
         WHERE id IN (
             SELECT word_id FROM kanji WHERE text = :text
             UNION
             SELECT word_id FROM kana WHERE text = :text
         )
-    """)
+    """
+    )
     suspend fun lookupWordsByText(text: String): List<WordFull>
 
     @Transaction
@@ -108,24 +90,27 @@ interface DictionaryDao {
     suspend fun getAllDictionaryWords(): List<String>
 
 
-
     @Transaction
-    @Query("""
+    @Query(
+        """
     SELECT * FROM words 
     WHERE id IN (
         SELECT word_id FROM kanji WHERE text IN (:terms)
         UNION
         SELECT word_id FROM kana WHERE text IN (:terms)
     )
-""")
+"""
+    )
     suspend fun lookupWordsByTerms(terms: List<String>): List<WordFull>
 
     data class WordWithSurface(
         @Embedded val word: WordFull,
         @ColumnInfo(name = "surface") val surface: String
     )
+
     @Transaction
-    @Query("""
+    @Query(
+        """
     SELECT w.*,
            k.text AS surface          -- or k.text if kanji wins ties
     FROM words w
@@ -137,7 +122,8 @@ interface DictionaryDao {
     FROM words w
     JOIN kana ka ON w.id = ka.word_id
     WHERE ka.text IN (:surfaces)
-""")
+"""
+    )
     suspend fun lookupWordsWithSurface(surfaces: List<String>): List<WordWithSurface>
 
     /**

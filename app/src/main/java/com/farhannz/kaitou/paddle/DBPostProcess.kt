@@ -127,10 +127,28 @@ class DBPostProcess(
         return groups
     }
 
-    fun process(pred: Mat, useDilation: Boolean, imgShape: DoubleArray): GroupedResult {
+    fun restoreBoxToOriginal(
+        box: List<Point>,
+        scale: Float,
+        dw: Float,
+        dh: Float
+    ): List<Point> {
+        return box.map { pt ->
+            Point(
+                ((pt.x - dw) / scale).coerceIn(0.0, Double.MAX_VALUE),
+                ((pt.y - dh) / scale).coerceIn(0.0, Double.MAX_VALUE)
+            )
+        }
+    }
+
+    fun process(pred: Mat, useDilation: Boolean, resizedInfo: DoubleArray): GroupedResult {
         val minMax = Core.minMaxLoc(pred)
         logger.DEBUG("Min: ${minMax.minVal}, Max: ${minMax.maxVal}")
-        val (srcH, srcW, ratioH, ratioW) = imgShape
+        val (srcW, srcH, scale, padX, padY) = resizedInfo
+
+        logger.DEBUG("Original size (WxH) - $srcW x $srcH")
+
+        logger.DEBUG(resizedInfo.joinToString(","))
         val segmentation = Mat()
         Core.compare(pred, Scalar(thresh), segmentation, Core.CMP_GT)
         val mask = if (useDilation) {
@@ -147,19 +165,25 @@ class DBPostProcess(
 //        val file = File(Environment.getExternalStorageDirectory(), "Download/segmentation_debug.png")
 //        Imgcodecs.imwrite(file.absolutePath, mask)
         val boxes = when (boxType) {
-            "poly" -> polygonsFromBitmap(pred, mask, srcW, srcH)
-            "quad" -> boxesFromBitmap(pred, mask, srcW, srcH)
+            "poly" -> polygonsFromBitmap(pred, mask, pred.width().toDouble(), pred.height().toDouble())
+            "quad" -> boxesFromBitmap(pred, mask, pred.width().toDouble(), pred.height().toDouble())
             else -> throw IllegalArgumentException("Invalid box type: $boxType")
         }
+
+        val restored = boxes.boxes.map {
+            restoreBoxToOriginal(it, scale.toFloat(), padX.toFloat(), padY.toFloat())
+        }
+
+        val result = DetectionResult(restored, boxes.scores)
         if (groupedBoxes) {
-            val grouped = groupOverlappingBoxes(boxes.boxes)
+            val grouped = groupOverlappingBoxes(restored)
 //            grouped.forEachIndexed { index, box ->
 //                logger.DEBUG("Grouped $index")
 //                logger.DEBUG(box.joinToString(","))
 //            }
-            return GroupedResult(boxes, grouped)
+            return GroupedResult(result, grouped)
         }
-        return GroupedResult(boxes, emptyList())
+        return GroupedResult(result, emptyList())
     }
 
     private fun polygonsFromBitmap(pred: Mat, bitmap: Mat, destWidth: Double, destHeight: Double): DetectionResult {
