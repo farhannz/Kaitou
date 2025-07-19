@@ -8,6 +8,8 @@ import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
 import com.baidu.paddle.lite.Tensor
 import com.farhannz.kaitou.data.models.GroupedResult
+import com.farhannz.kaitou.domain.OcrResult
+import com.farhannz.kaitou.domain.RawImage
 import com.farhannz.kaitou.helpers.Logger
 import org.opencv.android.Utils
 import org.opencv.core.*
@@ -58,6 +60,8 @@ abstract class BasePredictor {
         }
         return outFile.absolutePath
     }
+
+    abstract fun infer(inputImage: RawImage): OcrResult
 }
 
 
@@ -68,6 +72,10 @@ class RecognitionPredictor : BasePredictor() {
     private val input_shape = longArrayOf(3, 48, 320)
     private var ratioHW: FloatArray = floatArrayOf(1f, 1f)
     private val maxImageWidth = 3200
+
+    override fun infer(inputImage: RawImage): OcrResult {
+        return OcrResult.Error("NOT YET IMPLEMENTED")
+    }
 
     override fun initialize(context: Context, dirPath: String, fileName: String) {
         super.initialize(context, dirPath, fileName)
@@ -261,6 +269,10 @@ class DetectionPredictor : BasePredictor() {
     private var inputShape = longArrayOf(3, 960, 960)
     private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 2.0)
     private var resizedInfo: FloatArray = floatArrayOf(1f, 1f, 1f)
+    override fun infer(inputImage: RawImage): OcrResult {
+        return OcrResult.Error("NOT YET IMPLEMENTED")
+    }
+
     fun runInference(inputImage: Bitmap): GroupedResult {
         val end2end = Date()
         logger.INFO("Running inference")
