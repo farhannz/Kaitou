@@ -185,5 +185,6 @@ jobs:
       
       - name: Building the application (debug)
         run: |
+            chmod +x ./gradlew
             ./gradlew assembleDebug
             
