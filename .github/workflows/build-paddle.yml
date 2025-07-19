@@ -177,7 +177,9 @@ jobs:
 
       - name: Copying built paddle files to correct folders
         run: |
-            cp ./paddlelite-android-armv8/java/jar/PaddlePredictor.jar ./libs
+            mkdir -p app/src/main/jniLibs/arm64-v8a
+            mkdir -p app/libs
+            cp ./paddlelite-android-armv8/java/jar/PaddlePredictor.jar app/libs
             cp ./paddlelite-android-armv8/java/so/libpaddle_lite_jni.so app/src/main/jniLibs/arm64-v8a/libpaddle_lite_jni.so
             cp ./paddlelite-android-armv8/cxx/lib/libpaddle_light_api_shared.so app/src/main/jniLibs/arm64-v8a/libpaddle_light_api_shared.so 
             
