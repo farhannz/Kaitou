@@ -142,8 +142,5 @@ jobs:
           name: paddlelite-android-armv8
           path: ./paddlelite-android-armv8
   
-      - name: Extract artifact
-        run: |
-          echo "Extracting paddlelite-android-armv8"
-          unzip -o "paddlelite-android-armv8.zip" -d ./Paddle-Lite
-          ls
+      - name: List contents of artifact folder
+        run: ls -R ./paddlelite-android-armv8
