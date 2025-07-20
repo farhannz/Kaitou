@@ -65,8 +65,8 @@ class MainActivity : ComponentActivity() {
 
 
     //    This is for the reworked version of ScreenshotService
-//    Requesting Permission with the intent of Starting Service
-//    and caching the permission result via putExtra
+    //    Requesting Permission with the intent of Starting Service
+    //    and caching the permission result via putExtra
     private val screenshotPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { result ->
@@ -108,9 +108,6 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 //        OCRPipeline.initialize(this)
-        lifecycleScope.launch {
-            DatabaseManager.initializeWordsCache()
-        }
         requestScreenShotPermission()
     }
 }

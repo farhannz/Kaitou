@@ -1,6 +1,7 @@
 package com.farhannz.kaitou.impl
 
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import com.farhannz.kaitou.domain.OcrEngine
 import com.farhannz.kaitou.domain.OcrResult
@@ -14,6 +15,9 @@ import com.farhannz.kaitou.impl.paddle.RecognitionPredictor
 import com.farhannz.kaitou.impl.paddle.cropFromBox
 import com.farhannz.kaitou.presentation.utils.toMat
 import com.farhannz.kaitou.presentation.utils.toRawImage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import org.opencv.core.Core
 import kotlin.collections.component1
 import kotlin.collections.component2
@@ -84,5 +88,20 @@ class PaddleTextRecognizer(
             }
         }
         return results
+    }
+}
+
+data class ScreenshotData(val id: Long, val bitmap: Bitmap)
+
+object ScreenshotStore {
+    private val _latestScreenshot = MutableStateFlow<ScreenshotData?>(null)
+    val latestScreenshot = _latestScreenshot.asStateFlow()
+
+    fun updateScreenshot(bitmap: Bitmap) {
+        _latestScreenshot.value = ScreenshotData(System.currentTimeMillis(), bitmap)
+    }
+
+    fun clear() {
+        _latestScreenshot.value = null
     }
 }

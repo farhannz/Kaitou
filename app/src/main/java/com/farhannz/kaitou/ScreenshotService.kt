@@ -33,24 +33,9 @@ import androidx.core.app.NotificationCompat
 import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
+import com.farhannz.kaitou.impl.ScreenshotStore
+import com.farhannz.kaitou.presentation.utils.toBitmap
 import java.lang.ref.WeakReference
-
-
-fun Image.toBitmap(): Bitmap {
-    try {
-        val plane = planes[0]
-        val buffer = plane.buffer
-        val pixelStride = plane.pixelStride
-        val rowStride = plane.rowStride
-        val rowPadding = rowStride - pixelStride * width
-
-        return createBitmap(width + rowPadding / pixelStride, height).apply {
-            copyPixelsFromBuffer(buffer)
-        }
-    } catch (e: Exception) {
-        throw RuntimeException("Failed to convert image to bitmap", e)
-    }
-}
 
 class ScreenshotServiceRework : Service() {
 
@@ -58,8 +43,6 @@ class ScreenshotServiceRework : Service() {
     private val LOG_TAG = this::class.simpleName;
     private val logger = Logger(LOG_TAG!!)
     private val binder = LocalBinder(this@ScreenshotServiceRework)
-
-    private var mediaProjectionManager: MediaProjectionManager? = null
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
@@ -68,7 +51,7 @@ class ScreenshotServiceRework : Service() {
     var dataIntent: Intent? = null
 
     //    Callback
-    var onScreenshotTaken: ((Bitmap) -> Unit)? = null
+//    var onScreenshotTaken: ((Bitmap) -> Unit)? = null
 
     class LocalBinder(service: ScreenshotServiceRework) : Binder() {
         private var serviceRef: WeakReference<ScreenshotServiceRework>? = WeakReference(service)
@@ -82,6 +65,7 @@ class ScreenshotServiceRework : Service() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "SHUTDOWN_SERVICES") {
                 binder.clearReference()
+//                onScreenshotTaken = null
                 stopSelf()
             }
         }
@@ -97,7 +81,7 @@ class ScreenshotServiceRework : Service() {
             "CAPTURE_SCREENSHOT" -> {
 //                Empty Only for binding intent
 //                logger.INFO("Screenshot Captured")
-//                requestCapture()
+                requestCapture()
             }
 
             "START_SERVICE" -> {
@@ -109,7 +93,7 @@ class ScreenshotServiceRework : Service() {
                     rc = captured["resultCode"] as Int
                     dataIntent = captured["data"] as Intent
                     mediaProjection =
-                        (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
+                        (applicationContext.getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
                             rc,
                             dataIntent!!
                         )
@@ -176,7 +160,8 @@ class ScreenshotServiceRework : Service() {
                 val bitmap = excludeWindowInsets(image.toBitmap())
 //                val bitmap = image.toBitmap()/
                 image.close()
-                onScreenshotTaken?.invoke(bitmap)
+//                onScreenshotTaken?.invoke(bitmap)
+                ScreenshotStore.updateScreenshot(bitmap)
 
             } catch (e: Throwable) {
                 logger.ERROR(e.message!!)
@@ -209,7 +194,7 @@ class ScreenshotServiceRework : Service() {
         }
 
 //        Creating notification channel
-        val manager = getSystemService(NotificationManager::class.java)
+        val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(captureChannel)
         val notification = NotificationCompat.Builder(this, "ScreenshotRework")
             .setContentTitle("Kaitou")
@@ -220,13 +205,16 @@ class ScreenshotServiceRework : Service() {
     }
 
     override fun onDestroy() {
-        onScreenshotTaken = null
         imageReader?.close()
+        imageReader = null
+
         virtualDisplay?.surface = null
         virtualDisplay?.release()
+        virtualDisplay = null
+
         mediaProjection?.stop()
         mediaProjection = null
-        virtualDisplay = null
+
         unregisterReceiver(shutdownReceiver)
         super.onDestroy()
     }

@@ -1,6 +1,8 @@
 package com.farhannz.kaitou.presentation.utils
 
 import android.graphics.Bitmap
+import android.media.Image
+import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.domain.RawImage
 import org.opencv.core.CvType
 import org.opencv.core.Mat
@@ -88,4 +90,21 @@ fun Mat.toRawImage(): RawImage {
         height = height,
         channels = channels
     )
+}
+
+
+fun Image.toBitmap(): Bitmap {
+    try {
+        val plane = planes[0]
+        val buffer = plane.buffer
+        val pixelStride = plane.pixelStride
+        val rowStride = plane.rowStride
+        val rowPadding = rowStride - pixelStride * width
+
+        return createBitmap(width + rowPadding / pixelStride, height).apply {
+            copyPixelsFromBuffer(buffer)
+        }
+    } catch (e: Exception) {
+        throw RuntimeException("Failed to convert image to bitmap", e)
+    }
 }

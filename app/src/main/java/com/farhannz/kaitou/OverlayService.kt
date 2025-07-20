@@ -25,8 +25,17 @@ import androidx.lifecycle.*
 import androidx.savedstate.*
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.NotificationHelper
+import com.farhannz.kaitou.impl.ScreenshotStore
 import com.farhannz.kaitou.presentation.components.FloatingButton
 import com.farhannz.kaitou.presentation.components.OCRScreen
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlin.coroutines.coroutineContext
 
 
 typealias ComposableContent = @Composable () -> Unit
@@ -40,6 +49,8 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private val lifecycleRegistry = LifecycleRegistry(this)
     private var isBound = false
     private val isButtonVisibleState = mutableStateOf(true)
+
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val isMenuVisisbleState = mutableStateOf(true)
 
     private var overlayActive = false
@@ -52,39 +63,40 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
-    var hostActivity: OverlayHostActivity? = null
+//    var hostActivity: OverlayHostActivity? = null
 
     companion object {
         const val OVERLAY_NOTIFICATION_ID = 1770
-        var instance: OverlayService? = null
-            private set
+//        var instance: OverlayService? = null
+//            private set
     }
 
-    private val connection = object : ServiceConnection {
+//    private val connection = object : ServiceConnection {
+//
+//        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+//            val binder = service as ScreenshotServiceRework.LocalBinder
+//            val screenshotService = binder.getService()
+//            isBound = true
+////            screenshotService?.onScreenshotTaken = { bitmap ->
+////                logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
+////                showOCRScreen()
+////            }
+//            screenshotService?.rc = MainActivity.MediaProjectionPermissionStore.resultCode
+//            screenshotService?.dataIntent = MainActivity.MediaProjectionPermissionStore.dataIntent
+//            screenshotService?.requestCapture()
+//        }
+//
+//        override fun onServiceDisconnected(name: ComponentName?) {
+//            isBound = false
+////            screenshotService = null
+//        }
+//    }
 
-        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
-            val binder = service as ScreenshotServiceRework.LocalBinder
-            val screenshotService = binder.getService()
-            isBound = true
-            screenshotService?.onScreenshotTaken = { bitmap ->
-                logger.DEBUG("Screenshot received! ${bitmap.width}x${bitmap.height}")
-                showOCRScreen(bitmap)
-            }
-            screenshotService?.rc = MainActivity.MediaProjectionPermissionStore.resultCode
-            screenshotService?.dataIntent = MainActivity.MediaProjectionPermissionStore.dataIntent
-            screenshotService?.requestCapture()
-        }
-
-        override fun onServiceDisconnected(name: ComponentName?) {
-            isBound = false
-//            screenshotService = null
-        }
-    }
-
-    private val shutdownReceiver = object : BroadcastReceiver() {
+    private val overlayBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == "SHUTDOWN_SERVICES") {
-                stopSelf()
+            when (intent?.action) {
+                "SHUTDOWN_SERVICES" -> stopSelf()
+                "OVERLAY_DISMISSED" -> removeOverlay()
             }
         }
     }
@@ -107,39 +119,40 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         }
     }
 
-    private fun showOCRScreen(image: Bitmap) {
+    //    private fun showOCRScreen(image: Bitmap) {
+    private fun showOCRScreen() {
         val intent = Intent(this, OverlayHostActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
         }
         startActivity(intent)
-        ocrScreen = createComposeView {
-            OCRScreen(
-                onClicked = {
-                    removeOverlay()
-                    hostActivity?.finish()
-                },
-                inputImage = image
-            )
-        }
-        val layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-            PixelFormat.TRANSLUCENT
-        )
-
-        windowManager.addView(ocrScreen, layoutParams)
-        overlayActive = true
+//        ocrScreen = createComposeView {
+//            OCRScreen(
+//                onClicked = {
+//                    removeOverlay()
+//                    hostActivity?.finish()
+//                },
+//                inputImage = image
+//            )
+//        }
+//        val layoutParams = WindowManager.LayoutParams(
+//            WindowManager.LayoutParams.MATCH_PARENT,
+//            WindowManager.LayoutParams.MATCH_PARENT,
+//            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+//            WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or
+//                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+//                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+//            PixelFormat.TRANSLUCENT
+//        )
+//
+//        windowManager.addView(ocrScreen, layoutParams)
+//        overlayActive = true
     }
 
     private fun captureScreenshot() {
         isButtonVisibleState.value = false
-        if (isBound) {
-            unbindService(connection)
-        }
+//        if (isBound) {
+//            unbindService(connection)
+//        }
         logger.INFO("Requesting screenshot capture")
         logger.DEBUG("${MainActivity.MediaProjectionPermissionStore.resultCode} - ${MainActivity.MediaProjectionPermissionStore.dataIntent}")
         val intent = Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
@@ -147,14 +160,26 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             it.putExtra("resultCode", MainActivity.MediaProjectionPermissionStore.resultCode)
             it.putExtra("data", MainActivity.MediaProjectionPermissionStore.dataIntent)
         }
-        bindService(intent, connection, BIND_AUTO_CREATE)
+        startService(intent)
+        scope.launch {
+            val bitmap = ScreenshotStore.latestScreenshot
+                .filterNotNull()
+                .first()
+            val intent = Intent(this@OverlayService, OverlayHostActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            }
+            startActivity(intent)
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
-        registerReceiver(shutdownReceiver, IntentFilter("SHUTDOWN_SERVICES"), RECEIVER_NOT_EXPORTED)
-        instance = this
+        registerReceiver(overlayBroadcastReceiver, IntentFilter().apply {
+            addAction("SHUTDOWN_SERVICES")
+            addAction("OVERLAY_DISMISSED")
+        }, RECEIVER_NOT_EXPORTED)
+//        instance = this
         savedStateRegistryController.performRestore(null)
         startForegroundServiceWithNotification()
 
@@ -222,27 +247,33 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
         if (::composeView.isInitialized) {
             windowManager.removeView(composeView)
         }
-        unregisterReceiver(shutdownReceiver)
-        unbindService(connection)
-        instance = null
+        unregisterReceiver(overlayBroadcastReceiver)
+//        if (isBound) {
+//            val intent = Intent(this, ScreenshotServiceRework::class.java)
+//            unbindService(connection)
+//            stopService(intent)
+//            isBound = false
+//        }
+        removeOverlay()
+//        instance = null
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED // Important for cleanup
         super.onDestroy()
     }
 
 
     fun removeOverlay() {
-        ocrScreen?.let {
-            try {
-                if (overlayActive) {
-                    windowManager.removeView(it)
-                    overlayActive = false
-                }
-            } catch (e: Exception) {
-                logger.ERROR("Failed to remove overlay ${e.message.toString()}")
-            }
-            isButtonVisibleState.value = true
-            ocrScreen = null
-        }
+//        ocrScreen?.let {
+//            try {
+//                if (overlayActive) {
+//                    windowManager.removeView(it)
+//                    overlayActive = false
+//                }
+//            } catch (e: Exception) {
+//                logger.ERROR("Failed to remove overlay ${e.message.toString()}")
+//            }
+//            ocrScreen = null
+//        }
+        isButtonVisibleState.value = true
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
