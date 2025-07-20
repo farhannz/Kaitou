@@ -16,7 +16,6 @@ import com.farhannz.kaitou.impl.paddle.cropFromBox
 import com.farhannz.kaitou.presentation.utils.toMat
 import com.farhannz.kaitou.presentation.utils.toRawImage
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.opencv.core.Core
 import kotlin.collections.component1

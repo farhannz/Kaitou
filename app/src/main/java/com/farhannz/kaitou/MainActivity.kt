@@ -10,10 +10,7 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.mutableStateOf
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
-import kotlinx.coroutines.launch
 import androidx.core.net.toUri
 
 class MainActivity : ComponentActivity() {

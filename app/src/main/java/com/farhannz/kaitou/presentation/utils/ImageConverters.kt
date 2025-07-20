@@ -6,8 +6,6 @@ import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.domain.RawImage
 import org.opencv.core.CvType
 import org.opencv.core.Mat
-import java.nio.ByteBuffer
-
 
 fun Bitmap.toRawImage(): RawImage {
     val width = this.width
