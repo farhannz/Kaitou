@@ -21,47 +21,6 @@ import androidx.core.graphics.createBitmap
 private val LOG_TAG = "PredictorUtilsNew"
 private val logger = Logger(LOG_TAG)
 
-
-object PaddleHelper {
-    init {
-        System.loadLibrary("paddle_helper")
-    }
-
-    @JvmStatic
-    external fun getTensorBufferAddress(tensorAddr: Long, length: Int): Long
-
-    @JvmStatic
-    external fun copyBufferToAddress(buffer: FloatBuffer, nativePtr: Long, length: Int)
-}
-
-fun Tensor.safeNativeHandle(): Long {
-    return try {
-        val field = this::class.java.getDeclaredField("nativePointer")
-        field.isAccessible = true
-        field.getLong(this)
-    } catch (e: Exception) {
-        throw IllegalStateException("Unable to access native pointer", e)
-    }
-}
-
-private fun feedTensor(tensor: Tensor, mat: Mat, inputShape: List<Long>, buffer: FloatBuffer) {
-    require(mat.rows() == inputShape[1].toInt() && mat.cols() == inputShape[2].toInt())
-    buffer.clear()
-    val tmp = FloatArray(3)
-    for (h in 0 until mat.rows()) {
-        for (w in 0 until mat.cols()) {
-            mat.get(h, w, tmp)
-            buffer.put(tmp)
-        }
-    }
-    buffer.flip()
-    PaddleHelper.copyBufferToAddress(
-        buffer,
-        tensor.safeNativeHandle(),
-        ((1 * inputShape[0] * inputShape[1] * inputShape[2]).toInt())
-    )
-}
-
 fun letterboxBitmap(
     bitmap: Bitmap,
     targetWidth: Int = 960,

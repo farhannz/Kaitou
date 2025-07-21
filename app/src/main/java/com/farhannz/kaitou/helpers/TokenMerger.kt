@@ -141,6 +141,8 @@ object BoundaryViterbi {
             for (l in 1..minOf(MAX_SPAN, n - i)) {
                 val surface = tokens.subList(i, i + l)
                     .joinToString("") { it.surface }
+
+                // Need better cost calculation
                 val cost = if (surface in dict) {
                     IN_DICT_BONUS * l
                 } else {

@@ -175,12 +175,12 @@ fun DrawPolygons(
     ) {
         val scaleX = size.width / imageSize.width
         val scaleY = size.height / imageSize.height
-        drawRect(
-            color = Color.Red,
-            topLeft = Offset(0f, 0f),
-            size = Size(imageSize.width * scaleX, imageSize.height * scaleY),
-            style = Stroke(width = 2.dp.toPx())
-        )
+//        drawRect(
+//            color = Color.Red,
+//            topLeft = Offset(0f, 0f),
+//            size = Size(imageSize.width * scaleX, imageSize.height * scaleY),
+//            style = Stroke(width = 2.dp.toPx())
+//        )
 
         rawPaths.forEachIndexed { index, poly ->
             val isSelected = selectedIndices.contains(index)
@@ -298,7 +298,7 @@ fun WordPolygonsOverlay(
                                 val tokens = tokenizeWithPOS(selectedWord)
                                 logger.DEBUG(selectedWord)
                                 val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {
-                                    TokenHelper().correctAuxiliaryNegative(it)
+                                    TokenHelper.correctAuxiliaryNegative(it)
                                 }
                                 val result = BoundaryViterbi.segment(passiveProcessed, DatabaseManager.getCache()!!)
                                 logger.DEBUG(result.joinToString("\n"))

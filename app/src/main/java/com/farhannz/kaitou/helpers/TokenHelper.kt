@@ -3,7 +3,7 @@ package com.farhannz.kaitou.helpers
 import com.farhannz.kaitou.data.models.TokenInfo
 import com.farhannz.kaitou.`data`.models.SenseWithGlosses
 
-class TokenHelper {
+object TokenHelper {
 
     fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>?, maxGram: Int = 6): List<TokenInfo> {
         // Add before merging
