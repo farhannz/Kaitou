@@ -293,6 +293,8 @@ fun WordPolygonsOverlay(
                                 selectedWord =
                                     engine.recognize(raw, domainBoxes, selectedIndices)
                                         .joinToString("") { it.text }
+
+                                // TODO(Move tokenize to impl?)
                                 val tokens = tokenizeWithPOS(selectedWord)
                                 logger.DEBUG(selectedWord)
                                 val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {

@@ -86,7 +86,7 @@ class RecognitionPredictor : BasePredictor() {
 
     override fun initialize(context: Context, dirPath: String, fileName: String) {
         super.initialize(context, dirPath, fileName)
-        labelDecoder = CTCLabelDecoder(context.assets.open("dict.txt").bufferedReader().readLines())
+        labelDecoder = CTCLabelDecoder(context.assets.open("paddle/dict.txt").bufferedReader().readLines())
     }
 
     fun runBatchInference(inputImages: List<Mat>): List<String> {

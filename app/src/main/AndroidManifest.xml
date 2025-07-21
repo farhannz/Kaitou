@@ -11,7 +11,9 @@
             android:name=".MainApplication"
             android:label="Kaitou"
             android:theme="@style/TransparentTheme"
-            android:usesCleartextTraffic="true">
+            android:usesCleartextTraffic="true"
+    >
+        <profileable android:shell="true"/>
         <activity android:name=".MainActivity"
                   android:exported="true">
             <intent-filter>

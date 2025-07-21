@@ -31,7 +31,7 @@ import com.farhannz.kaitou.presentation.utils.toBitmap
 class ScreenshotServiceRework : Service() {
 
 
-    private val LOG_TAG = this::class.simpleName;
+    private val LOG_TAG = ScreenshotServiceRework::class.simpleName;
     private val logger = Logger(LOG_TAG!!)
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
@@ -56,8 +56,6 @@ class ScreenshotServiceRework : Service() {
         Log.i(LOG_TAG, "Received Request")
         when (intent?.action) {
             "CAPTURE_SCREENSHOT" -> {
-//                Empty Only for binding intent
-//                logger.INFO("Screenshot Captured")
                 requestCapture()
             }
 

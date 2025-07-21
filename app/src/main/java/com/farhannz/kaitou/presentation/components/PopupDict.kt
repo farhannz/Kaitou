@@ -27,11 +27,11 @@ import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.posMapping
 
 
-@Composable
-@Preview
-fun previewBottomSheet() {
-    BottomSheetContent(listOf(TokenInfo("元気", "元気", "asd")), "元気ですか", {})
-}
+//@Composable
+////@Preview
+//fun previewBottomSheet() {
+//    BottomSheetContent(listOf(TokenInfo("元気", "元気", "asd")), "元気ですか", {})
+//}
 
 @Composable
 fun BottomSheetContent(
@@ -121,6 +121,7 @@ fun MorphemeItemCard(token: TokenInfo) {
     var state by remember(token) { mutableStateOf<LookupState>(LookupState.LookingUp) }
 
     LaunchedEffect(token) {
+        // TODO("Move to impl/usecase?")
         val result = DatabaseManager.getDatabase().dictionaryDao().lookupWord(token)
         state = if (result.isNotEmpty()) {
             LookupState.Done(result)
@@ -232,11 +233,11 @@ fun MorphemeItem(
     }
 }
 
-@Preview
-@Composable
-fun PreviewPopUp() {
-    PopUpDict(TokenInfo("test", "test", "test"))
-}
+//@Preview
+//@Composable
+//fun PreviewPopUp() {
+//    PopUpDict(TokenInfo("test", "test", "test"))
+//}
 
 sealed class LookupState {
     object LookingUp : LookupState()

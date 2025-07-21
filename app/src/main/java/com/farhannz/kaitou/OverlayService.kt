@@ -49,7 +49,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private val logger = Logger(LOG_TAG!!)
     private val savedStateRegistryController = SavedStateRegistryController.create(this)
     private val lifecycleRegistry = LifecycleRegistry(this)
-    private var isBound = false
     private val isButtonVisibleState = mutableStateOf(true)
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
@@ -57,12 +56,10 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     private var currentX = 0
     private var currentY = 100
-    private var ocrScreen: ComposeView? = null
 
 
     override val lifecycle: Lifecycle
         get() = lifecycleRegistry
-//    var hostActivity: OverlayHostActivity? = null
 
     companion object {
         const val OVERLAY_NOTIFICATION_ID = 1770
@@ -124,7 +121,6 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             addAction("SHUTDOWN_SERVICES")
             addAction("OVERLAY_DISMISSED")
         }, RECEIVER_NOT_EXPORTED)
-//        instance = this
         savedStateRegistryController.performRestore(null)
         startForegroundServiceWithNotification()
 
