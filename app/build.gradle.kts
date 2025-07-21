@@ -33,12 +33,18 @@ android {
     buildFeatures {
         compose = true
     }
+    signingConfigs {
+        create("release") {
+            storeFile = file("../release-key.jks")
+            storePassword = System.getenv("KEY_STORE_PASSWORD")
+            keyAlias = System.getenv("ALIAS")
+            keyPassword = System.getenv("KEY_PASSWORD")
+        }
+    }
     buildTypes {
-        release {
-//            isMinifyEnabled = true
-//            isShrinkResources = true
-//            isDebuggable = true
-            signingConfig = signingConfigs.getByName("debug")
+        getByName("release") {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 
