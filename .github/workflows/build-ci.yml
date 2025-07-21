@@ -187,19 +187,18 @@ jobs:
           chmod +x ./gradlew
           ./gradlew assembleRelease
 
-      - name: Building the application (debug)
-        run: |
-          chmod +x ./gradlew
-          ./gradlew assembleDebug
-
-      - name: Upload debug APK
+      - name: Upload release APK (Nightly)
+        if: github.ref == 'refs/heads/nightly'
         uses: actions/upload-artifact@v4
         with:
-          name: kaitou-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: kaitou-release-nightly.apk
+          path: app/build/outputs/apk/release/app-release.apk
 
-      - name: Upload release APK
-        uses: actions/upload-artifact@v4
+      - name: Create nightly release
+        if: github.ref == 'refs/heads/nightly'
+        uses: pyTooling/Actions/releaser@r0
         with:
-          name: kaitou-release
-          path: app/build/outputs/apk/release/app-release
+          tag: nightly
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            kaitou-release-nightly.apk
