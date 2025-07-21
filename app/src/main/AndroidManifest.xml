@@ -12,6 +12,7 @@
             android:label="Kaitou"
             android:theme="@style/TransparentTheme"
             android:usesCleartextTraffic="true"
+            android:icon="@mipmap/ic_launcher"
     >
         <profileable android:shell="true"/>
         <activity android:name=".MainActivity"
