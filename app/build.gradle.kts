@@ -15,7 +15,7 @@ android {
     defaultConfig {
         applicationId = "com.farhannz.kaitou"
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.1.0"
         minSdk = 31
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ndk {
