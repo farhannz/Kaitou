@@ -195,8 +195,8 @@ fun FloatingButton(
                         .padding(vertical = 8.dp)
                         .fillMaxWidth(0.05f)
                 ) {
-                    MenuItem("Option 1") { /* TODO */ }
-                    MenuItem("Option 2") { /* TODO */ }
+//                    MenuItem("Option 1") { /* TODO */ }
+//                    MenuItem("Option 2") { /* TODO */ }
                     MenuItem("Shutdown") {
 //                        val stopOverlayService = Intent(context, OverlayService::class.java)
 //                        val stopScreenshotService = Intent(context, ScreenshotServiceRework::class.java)
