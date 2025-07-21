@@ -1,7 +1,7 @@
 # Kaitou
 
 ![WIP](https://img.shields.io/badge/status-WIP-orange)
-[![Build Application](https://github.com/farhannz/Kaitou/actions/workflows/build-action.yml/badge.svg)](https://github.com/farhannz/Kaitou/actions/workflows/build-action.yml)
+[![Build Application](https://github.com/farhannz/Kaitou/actions/workflows/build-ci.yml/badge.svg?branch=nightly)](https://github.com/farhannz/Kaitou/actions/workflows/build-ci.yml)
 
 ### Overview
 
@@ -46,7 +46,8 @@ Notes:
 
 ### Getting Started
 
-0. Download the apk from [release]().
+> Download the apk from latest successful build [artifact]().
+
 1. Install the APK.
 2. Open Kaitou and grant the required permissions:
 

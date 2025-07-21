@@ -5,6 +5,8 @@ on:
     branches:
       - master
       - nightly
+    paths-ignore:
+      - '**/README.md'
 
 jobs:
   paddle:
@@ -181,7 +183,9 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
           ALIAS: ${{ secrets.ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew assembleRelease
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleRelease
 
       - name: Building the application (debug)
         run: |
