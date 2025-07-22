@@ -14,6 +14,28 @@ connectivity.
 > Japanese.
 > It's not a polished app—please expect rough edges, bugs, and unfinished features.
 
+### Getting Started
+
+> Download the apk from latest successful nightly
+> build [from here](https://github.com/farhannz/Kaitou/releases/download/nightly-release/kaitou-release-nightly.apk).
+
+1. Install the APK.
+2. Open Kaitou and grant the required permissions:
+
+    * **Display over other apps**
+    * **Screen capture**
+3. The floating button will appear and stay active until the app is exited.
+
+### Who It’s For
+
+* Japanese learners encountering unfamiliar words
+* Readers of manga, games, web pages, or any other Japanese media
+
+### Key Features
+
+* Works across all apps—Chrome, manga, games, etc.
+* 100% offline: all processing happens locally on your device
+
 ### Basic Flow
 
 1. Launch the app once.
@@ -33,27 +55,6 @@ Notes:
 
 ![demo.gif](docs/demo.gif)
 > Demo content shown is for illustrative purposes only.
-
-### Who It’s For
-
-* Japanese learners encountering unfamiliar words
-* Readers of manga, games, web pages, or any other Japanese media
-
-### Key Features
-
-* Works across all apps—Chrome, manga, games, etc.
-* 100% offline: all processing happens locally on your device
-
-### Getting Started
-
-> Download the apk from latest successful build [artifact]().
-
-1. Install the APK.
-2. Open Kaitou and grant the required permissions:
-
-    * **Display over other apps**
-    * **Screen capture**
-3. The floating button will appear and stay active until the app is exited.
 
 ### Usage Tips
 
