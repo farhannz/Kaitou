@@ -205,7 +205,7 @@ jobs:
         if: github.ref == 'refs/heads/nightly'
         uses: pyTooling/Actions/releaser@r0
         with:
-          tag: nightly
+          tag: nightly-release
           token: ${{ secrets.GITHUB_TOKEN }}
           files: |
             kaitou-release-nightly.apk
