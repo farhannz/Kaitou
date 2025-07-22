@@ -36,14 +36,16 @@ android {
     signingConfigs {
         create("release") {
             storeFile = file("../release-key.jks")
-            storePassword = System.getenv("KEY_STORE_PASSWORD")
-            keyAlias = System.getenv("ALIAS")
-            keyPassword = System.getenv("KEY_PASSWORD")
+            storePassword = "@10bexgm*2wxz5eeD2Kq"
+            keyAlias = "kaitou-release"
+            keyPassword = "@10bexgm*2wxz5eeD2Kq"
         }
     }
     buildTypes {
         getByName("release") {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
+            setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"))
             signingConfig = signingConfigs.getByName("release")
         }
     }
