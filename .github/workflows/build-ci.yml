@@ -196,6 +196,11 @@ jobs:
           name: kaitou-release-nightly.apk
           path: app/build/outputs/apk/release/app-release.apk
 
+      - name: Rename APK for release
+        if: github.ref == 'refs/heads/nightly'
+        run: |
+          cp app/build/outputs/apk/release/app-release.apk kaitou-release-nightly.apk
+
       - name: Create nightly release
         if: github.ref == 'refs/heads/nightly'
         uses: pyTooling/Actions/releaser@r0
