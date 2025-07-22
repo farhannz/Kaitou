@@ -138,6 +138,7 @@ jobs:
   armv8:
     needs: paddle
     runs-on: ubuntu-latest
+    environment: action-release
     env:
       ANDROID_NDK_VERSION: r27d
       ANDROID_API: 27
