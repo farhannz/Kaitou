@@ -23,8 +23,10 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.domain.LookupResult
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.posMapping
+import com.farhannz.kaitou.impl.JMDict
 
 
 //@Composable
@@ -121,12 +123,15 @@ fun MorphemeItemCard(token: TokenInfo) {
     var state by remember(token) { mutableStateOf<LookupState>(LookupState.LookingUp) }
 
     LaunchedEffect(token) {
-        // TODO("Move to impl/usecase?")
-        val result = DatabaseManager.getDatabase().dictionaryDao().lookupWord(token)
-        state = if (result.isNotEmpty()) {
-            LookupState.Done(result)
-        } else {
-            LookupState.NotFound
+        val result = JMDict.lookup(token)
+        when (result) {
+            is LookupResult.Success -> {
+                state = LookupState.Done(result)
+            }
+
+            is LookupResult.Error -> {
+                state = LookupState.NotFound
+            }
         }
     }
 
@@ -143,31 +148,12 @@ fun MorphemeItemCard(token: TokenInfo) {
         }
 
         is LookupState.Done -> {
-            val entry = s.result.first()
-
-            // Use the matched kanji/kana from lookupWord result
-            val surfaceForm = entry.kanji.find { it.text == token.surface }?.text
-                ?: entry.kana.find { it.text == token.surface }?.text
-                ?: entry.kanji.find { it.text == token.baseForm }?.text
-                ?: entry.kana.find { it.text == token.baseForm }?.text
-                ?: entry.kanji.find { it.common == true }?.text
-                ?: entry.kana.find { it.common == true }?.text
-                ?: token.surface
-
-            val reading = entry.kana.find { it.text == token.surface }?.text
-                ?: entry.kana.find { it.text == token.baseForm }?.text
-                ?: entry.kana.find { it.common == true }?.text
-                ?: entry.kana.firstOrNull()?.text
-                ?: ""
-
-            val meaning = entry.senses.firstOrNull()?.glosses
-                ?.firstOrNull { it.lang == "eng" }?.text ?: ""
-
+            val entry = s.result.morphemeData
             MorphemeItem(
-                morpheme = surfaceForm,
-                reading = reading,
-                meaning = meaning,
-                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
+                morpheme = entry.text,
+                reading = entry.reading,
+                meaning = entry.meaning,
+                type = entry.type
             )
         }
 
@@ -181,13 +167,6 @@ fun MorphemeItemCard(token: TokenInfo) {
         }
     }
 }
-
-data class MorphemeData(
-    val text: String,
-    val type: String,
-    val reading: String,
-    val meaning: String
-)
 
 @Composable
 fun MorphemeItem(
@@ -241,117 +220,6 @@ fun MorphemeItem(
 
 sealed class LookupState {
     object LookingUp : LookupState()
-    data class Done(val result: List<WordFull>) : LookupState()
+    data class Done(val result: LookupResult.Success) : LookupState()
     object NotFound : LookupState()
-}
-
-@Composable
-fun PopUpDict(
-    token: TokenInfo
-) {
-    var currentState by remember { mutableStateOf<LookupState>(LookupState.LookingUp) }
-
-    LaunchedEffect(token) {
-        currentState = LookupState.LookingUp
-        val dictionaryDao = DatabaseManager.getDatabase().dictionaryDao()
-        val result = dictionaryDao.lookupWord(token)
-
-        currentState = if (result.isNotEmpty()) {
-            LookupState.Done(result)
-        } else {
-            LookupState.NotFound
-        }
-    }
-
-    when (val state = currentState) {
-        is LookupState.LookingUp -> {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 32.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator()
-            }
-        }
-
-        is LookupState.Done -> {
-            val wordEntry = state.result.first()
-
-            val reading = wordEntry.getMostLikelyKana(token)
-            val meaning = wordEntry.getMostLikelyMeaning(token)
-
-            val surfaceForm = wordEntry.kanji.firstOrNull { it.common == true }?.text
-                ?: wordEntry.kana.firstOrNull { it.common == true }?.text
-                ?: wordEntry.kanji.firstOrNull()?.text
-                ?: wordEntry.kana.firstOrNull()?.text
-                ?: token.surface // Fallback to the original token surface
-
-            ElevatedCard(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth(),
-                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Column(modifier = Modifier.padding(16.dp)) {
-                    // Japanese word
-                    Text(
-                        text = surfaceForm,
-                        style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-
-                    // Kana reading (only show if it's different from the main form)
-                    if (!reading.isNullOrBlank() && reading != surfaceForm) {
-                        Text(
-                            text = reading,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                fontStyle = FontStyle.Italic,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            ),
-                            modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
-                        )
-                    }
-
-                    HorizontalDivider(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 8.dp),
-                        color = MaterialTheme.colorScheme.outlineVariant
-                    )
-
-                    // Definition/Meaning
-                    if (!meaning.isNullOrBlank()) {
-                        Text(
-                            text = meaning,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                    } else {
-                        Text(
-                            text = "No definition available.",
-                            style = MaterialTheme.typography.bodyLarge.copy(fontStyle = FontStyle.Italic),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                }
-            }
-        }
-
-        is LookupState.NotFound -> {
-            Card(
-                modifier = Modifier
-                    .padding(horizontal = 16.dp, vertical = 8.dp)
-                    .fillMaxWidth()
-            ) {
-                Text(
-                    text = "Word not found in dictionary.",
-                    style = MaterialTheme.typography.bodyMedium.copy(fontStyle = FontStyle.Italic),
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
 }

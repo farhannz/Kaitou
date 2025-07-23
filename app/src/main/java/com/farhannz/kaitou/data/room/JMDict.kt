@@ -23,7 +23,9 @@ import com.farhannz.kaitou.data.dao.*
 )
 abstract class JmdictDatabase : RoomDatabase() {
     abstract fun dictionaryDao(): DictionaryDao
-        companion object {
+    abstract fun wordDao(): WordGlossDao
+
+    companion object {
         fun getDatabase(context: Context): JmdictDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,

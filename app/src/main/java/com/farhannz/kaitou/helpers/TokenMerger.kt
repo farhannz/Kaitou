@@ -7,6 +7,26 @@ interface TokenMerger {
     suspend fun merge(tokens: List<TokenInfo>, dict: Set<String>?): List<TokenInfo>
 }
 
+fun katakanaToHiragana(katakanaString: String): String {
+    val hiraganaBuilder = StringBuilder()
+    for (char in katakanaString) {
+        if (char.isKatakana()) {
+            // Katakana Unicode range: U+30A0 - U+30FF
+            // Hiragana Unicode range: U+3040 - U+309F
+            // The offset is 0x60 (96 in decimal)
+            hiraganaBuilder.append((char.code - 0x60).toChar())
+        } else {
+            hiraganaBuilder.append(char) // Append non-Katakana characters as-is
+        }
+    }
+    return hiraganaBuilder.toString()
+}
+
+// Extension function to check if a character is Katakana
+fun Char.isKatakana(): Boolean {
+    return this.code in 0x30A0..0x30FF
+}
+
 val posMapping: Map<String, List<String>> = mapOf(
     "名詞-普通名詞" to listOf("n"),
     "名詞-固有名詞-人名" to listOf("n"),
@@ -24,6 +44,7 @@ val posMapping: Map<String, List<String>> = mapOf(
     "助動詞" to listOf("aux-v", "aux-adj"),
     "接尾辞" to listOf("suf"),
     "接頭辞" to listOf("pref"),
+    "副詞" to listOf("adv"),
     "副詞-一般" to listOf("adv"),
     "連体詞" to listOf("adj-no"),
     "感動詞" to listOf("int"),
@@ -59,7 +80,7 @@ object BoundaryViterbi {
                     suf.surface == "れ" && aux.surface in setOf("る", "た", "て", "ない", "ます")
                 ) {
                     val base = verb.baseForm ?: verb.surface
-                    val newBase = base + if (base.endsWith("る")) "られる" else "れる"
+                    val newBase = base
                     Triple(
                         verb.surface + suf.surface + aux.surface,
                         newBase,
@@ -81,7 +102,7 @@ object BoundaryViterbi {
                 ) {
 
                     val base = verb.baseForm ?: verb.surface
-                    val newBase = base + if (base.endsWith("る")) "させられる" else "せられる"
+                    val newBase = base
                     Triple(
                         verb.surface + suf1.surface + suf2.surface + aux.surface,
                         newBase,
@@ -174,9 +195,11 @@ object BoundaryViterbi {
             val e = prev[pos] ?: break
             val mergedSurface = tokens.subList(e.start, e.end)
                 .joinToString("") { it.surface }
+            val mergedBase = tokens.subList(e.start, e.end)
+                .joinToString("") { it.baseForm!! }
 //            val posTag = tokens[e.start].partOfSpeech   // or smarter mapping
             val posTag = getBestPosTag(tokens.subList(e.start, e.end), dict)
-            result.add(0, TokenInfo(mergedSurface, mergedSurface, posTag))
+            result.add(0, TokenInfo(mergedSurface, mergedBase, posTag))
             pos = e.start
         }
         return result
