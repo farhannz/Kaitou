@@ -8,6 +8,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.helpers.katakanaToHiragana
 import com.farhannz.kaitou.helpers.posMapping
 
 @Dao
@@ -134,62 +135,53 @@ interface DictionaryDao {
      * @return A list of matching `WordFull` objects, correctly filtered.
      */
     suspend fun lookupWord(token: TokenInfo): List<WordFull> {
-        val terms = listOfNotNull(token.baseForm, token.surface).distinct()
-        if (terms.isEmpty()) return emptyList()
+        val base = token.baseForm.orEmpty()
+        val reading = token.reading
+        val surface = token.surface
 
-        val potentialWords = lookupWordsByTerms(terms)
+        if (base.isEmpty() && surface.isEmpty()) return emptyList()
+
+        val uniqueTerms = buildSet {
+            add(surface)
+            if (base != surface) add(base)
+        }
+
+        if (uniqueTerms.isEmpty()) return emptyList()
+
+        val potentialWords = lookupWordsByTerms(uniqueTerms.toList())
+
         if (potentialWords.isEmpty()) return emptyList()
 
         val tokenPosCategory = token.partOfSpeech.substringBefore("-")
         val posMapping = getPosMapping()
-        val mappedJmdictPOS = posMapping[token.partOfSpeech] ?: posMapping[tokenPosCategory] ?: emptyList()
+        val mappedPOS = posMapping[token.partOfSpeech]
+            ?: posMapping[tokenPosCategory]
+            ?: emptyList()
 
-        data class ScoredWord(val word: WordFull, val score: Double)
-
-        val scored = potentialWords.map { word ->
-            var score = 0.0
-
-            // Exact match bonus
-            val surfaceMatch = word.kanji.any { it.text == token.surface } ||
-                    word.kana.any { it.text == token.surface }
-            val baseformMatch = word.kanji.any { it.text == token.baseForm } ||
-                    word.kana.any { it.text == token.baseForm }
-
-            when {
-                surfaceMatch -> score += 20.0
-                baseformMatch -> score += 10.0
-            }
-
-            // POS match scoring
-            if (mappedJmdictPOS.isNotEmpty()) {
-                val posMatches = word.senses.count { sense ->
-                    val sensePosTags = sense.sense.partOfSpeech
+        val ambiguousCategories = setOf("助詞", "助動詞")
+        val filteredWords = potentialWords.filter { word ->
+            // Strict POS filtering for ambiguous parts of speech
+            if (tokenPosCategory in ambiguousCategories) {
+                word.senses.any { sense ->
+                    val posTags = sense.sense.partOfSpeech
                         .removeSurrounding("[", "]")
                         .split(",")
                         .map { it.trim().removeSurrounding("\"") }
-                    sensePosTags.any { it in mappedJmdictPOS }
+
+                    posTags.any { it in mappedPOS }
                 }
-
-                // Strong POS filtering for particles/auxiliary verbs
-                val ambiguousPosCategories = setOf("助詞", "助動詞")
-                if (tokenPosCategory in ambiguousPosCategories) {
-                    if (posMatches == 0) score = -100.0 // Exclude completely
-                    else score += posMatches * 10.0
-                } else {
-                    score += posMatches * 5.0 // Bonus for POS match
-                }
-            }
-
-            // Prefer words with fewer senses (more specific)
-            score += (10.0 / (word.senses.size + 1))
-
-            ScoredWord(word, score)
+            } else true // Keep broader matches for other categories
         }
 
-        return scored
-            .filter { it.score > 0 } // Remove excluded words
-            .sortedByDescending { it.score }
-            .map { it.word }
+        // Optionally: retain only exact/normalized form matches
+        val filteredByForm = filteredWords.filter { word ->
+            val allForms = word.kanji.map { it.text } + word.kana.map { it.text }
+            allForms.any { form ->
+                form == surface || form == base
+            }
+        }
+
+        return filteredByForm
     }
 
     /**
@@ -199,3 +191,46 @@ interface DictionaryDao {
         return posMapping
     }
 }
+
+
+data class WordGlossEntry(
+    @ColumnInfo(name = "word_id") val wordId: Long,
+    @ColumnInfo(name = "kanji_text") val kanjiText: String?,
+    @ColumnInfo(name = "kana_text") val kanaText: String?,
+    @ColumnInfo(name = "sense_id") val senseId: Long,
+    @ColumnInfo(name = "lang") val lang: String,
+    @ColumnInfo(name = "part_of_speech") val partOfSpeech: String,
+    @ColumnInfo(name = "gloss_text") val glossText: String
+)
+
+@Dao
+interface WordGlossDao {
+
+    @Query(
+        """
+        SELECT 
+            w.id AS word_id,
+            k.text AS kanji_text,
+            a.text AS kana_text,
+            s.sense_id,
+            g.lang,
+            s.part_of_speech,
+            g.text AS gloss_text
+        FROM kana a
+        LEFT JOIN kanji k ON k.text = :surface AND k.word_id = a.word_id
+        JOIN words w ON w.id = COALESCE(k.word_id, a.word_id)
+        JOIN sense s ON s.word_id = w.id
+        JOIN gloss g ON g.sense_id = s.sense_id
+        WHERE a.text = :surface
+          AND g.lang = 'eng'
+          AND s.part_of_speech LIKE '%' || :jmdictPos || '%'
+        ORDER BY w.id, s.sense_id, g.lang
+        """
+    )
+    suspend fun lookupWordGlossBySurfaceAndPos(
+        surface: String,
+        jmdictPos: String
+    ): List<WordGlossEntry>
+}
+
+
