@@ -1,5 +1,6 @@
 package com.farhannz.kaitou.presentation.components
 
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -17,6 +18,7 @@ import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
@@ -24,9 +26,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.domain.LookupResult
+import com.farhannz.kaitou.domain.MorphemeData
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.posMapping
 import com.farhannz.kaitou.impl.JMDict
+import com.farhannz.kaitou.presentation.ocr.MorphemeCard
+import com.farhannz.kaitou.presentation.ocr.StickyHeader
 
 
 //@Composable
@@ -43,63 +48,22 @@ fun BottomSheetContent(
 ) {
     val configuration = LocalConfiguration.current
     val screenHeight = configuration.screenHeightDp.dp
-    val maxHeight = screenHeight / 2
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(max = maxHeight)
-    ) {
-        StickyHeader(
-            title = selectedWord,
-            onDismiss = onDismiss
-        )
-        logger.DEBUG("Merged size ${merged.size}")
-        MorphemeBreakdownCard(merged)
-    }
-}
-
-@Composable
-fun StickyHeader(
-    title: String,
-    onDismiss: () -> Unit
-) {
-    val fontSize = when {
-        title.length <= 12 -> 24.sp
-        title.length <= 20 -> 20.sp
-        else -> 16.sp
-    }
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 4.dp,
-        shape = RoundedCornerShape(16.dp)
-    ) {
-        Row(
+    val maxHeight = screenHeight * 2 / 3
+    val useDarkTheme = isSystemInDarkTheme()
+    val colors =
+        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(LocalContext.current)
+    MaterialTheme(colorScheme = colors) {
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
+                .heightIn(max = maxHeight)
         ) {
-            Text(
-                text = title,
-                fontSize = fontSize,
-                lineHeight = fontSize * 1.4f,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.weight(1f),
+            StickyHeader(
+                title = selectedWord,
+                onDismiss = onDismiss
             )
-
-            IconButton(
-                onClick = onDismiss,
-                modifier = Modifier.size(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Close,
-                    contentDescription = "Close",
-                    tint = MaterialTheme.colorScheme.onSurface
-                )
-            }
+            logger.DEBUG("Merged size ${merged.size}")
+            MorphemeBreakdownCard(merged)
         }
     }
 }
@@ -149,11 +113,9 @@ fun MorphemeItemCard(token: TokenInfo) {
 
         is LookupState.Done -> {
             val entry = s.result.morphemeData
-            MorphemeItem(
-                morpheme = entry.text,
-                reading = entry.reading,
-                meaning = entry.meaning,
-                type = entry.type
+            logger.DEBUG(entry.toString())
+            MorphemeCard(
+                entry
             )
         }
 

@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -44,6 +45,7 @@ import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.helpers.BoundaryViterbi
 import com.farhannz.kaitou.helpers.DatabaseManager
+import com.farhannz.kaitou.helpers.InflectionRules
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.presentation.utils.toCurrentImpl
@@ -104,53 +106,61 @@ fun BottomPopup(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Un
     var offsetY by remember { mutableFloatStateOf(0f) }
 
     var internalVisible by remember { mutableStateOf(false) }
-
+    val useDarkTheme = isSystemInDarkTheme()
+    val colors =
+        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(
+            LocalContext.current
+        )
     LaunchedEffect(Unit) {
         internalVisible = true
     }
-
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color.Transparent)
-    ) {
-        AnimatedVisibility(
-            visible = internalVisible,
-            enter = slideInVertically(
-                initialOffsetY = { fullHeight -> fullHeight },
-                animationSpec = tween(300)
-            ),
-            exit = slideOutVertically(
-                targetOffsetY = { fullHeight -> fullHeight },
-                animationSpec = tween(200)
-            ),
-            modifier = Modifier.align(Alignment.BottomCenter)
+    MaterialTheme(colorScheme = colors) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color.Transparent)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .offset { IntOffset(0, offsetY.toInt()) }
-                    .background(Color.White, shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                    .padding(16.dp)
-                    .verticalScroll(rememberScrollState())
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures(
-                            onDragEnd = {
-                                if (offsetY > swipeThreshold) {
-                                    internalVisible = false
-                                    onDismiss()
-                                } else {
-                                    offsetY = 0f
-                                }
-                            },
-                            onDragCancel = { offsetY = 0f },
-                            onVerticalDrag = { _, dragAmount ->
-                                offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
-                            }
-                        )
-                    }
+            AnimatedVisibility(
+                visible = internalVisible,
+                enter = slideInVertically(
+                    initialOffsetY = { fullHeight -> fullHeight },
+                    animationSpec = tween(300)
+                ),
+                exit = slideOutVertically(
+                    targetOffsetY = { fullHeight -> fullHeight },
+                    animationSpec = tween(200)
+                ),
+                modifier = Modifier.align(Alignment.BottomCenter)
             ) {
-                content()
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .offset { IntOffset(0, offsetY.toInt()) }
+                        .background(
+                            MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp)
+                        )
+                        .padding(16.dp)
+                        .verticalScroll(rememberScrollState())
+                        .pointerInput(Unit) {
+                            detectVerticalDragGestures(
+                                onDragEnd = {
+                                    if (offsetY > swipeThreshold) {
+                                        internalVisible = false
+                                        onDismiss()
+                                    } else {
+                                        offsetY = 0f
+                                    }
+                                },
+                                onDragCancel = { offsetY = 0f },
+                                onVerticalDrag = { _, dragAmount ->
+                                    offsetY = (offsetY + dragAmount).coerceAtLeast(0f)
+                                }
+                            )
+                        }
+                ) {
+                    content()
+                }
             }
         }
     }
@@ -272,53 +282,60 @@ fun WordPolygonsOverlay(
                     }
             ) {
                 if (showPopup) {
-                    BottomPopup(
-                        onDismiss = { showPopup = false }
-                    ) {
-                        var merged by remember { mutableStateOf<List<TokenInfo>?>(null) }
-                        var selectedWord by remember { mutableStateOf("") }
+                    val useDarkTheme = isSystemInDarkTheme()
+                    val colors =
+                        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(
+                            LocalContext.current
+                        )
+                    MaterialTheme(colorScheme = colors) {
+                        BottomPopup(
+                            onDismiss = { showPopup = false }
+                        ) {
+                            var merged by remember { mutableStateOf<List<TokenInfo>?>(null) }
+                            var selectedWord by remember { mutableStateOf("") }
 
-                        LaunchedEffect(selectedIndices.joinToString("")) {
-                            merged = null // reset before loading
-                            withContext(Dispatchers.Default) {
-                                val engine = (context.applicationContext as MainApplication).textRecognizer
-//                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
-//                                selectedWord = texts.joinToString("")
-                                val raw = originalImage.toRawImage()
-                                val domainBoxes = grouped.detections.boxes.map { box ->
-                                    box.map {
-                                        DomainPoint(it.x.toFloat(), it.y.toFloat())
+                            LaunchedEffect(selectedIndices.joinToString("")) {
+                                merged = null // reset before loading
+                                withContext(Dispatchers.Default) {
+                                    val engine = (context.applicationContext as MainApplication).textRecognizer
+                                    //                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
+                                    //                                selectedWord = texts.joinToString("")
+                                    val raw = originalImage.toRawImage()
+                                    val domainBoxes = grouped.detections.boxes.map { box ->
+                                        box.map {
+                                            DomainPoint(it.x.toFloat(), it.y.toFloat())
+                                        }
                                     }
-                                }
-                                selectedWord =
-                                    engine.recognize(raw, domainBoxes, selectedIndices)
-                                        .joinToString("") { it.text }
+                                    selectedWord =
+                                        engine.recognize(raw, domainBoxes, selectedIndices)
+                                            .joinToString("") { it.text }
 
-                                // TODO(Move tokenize to impl?)
-                                val tokens = tokenizeWithPOS(selectedWord)
-                                logger.DEBUG(selectedWord)
-                                val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {
-                                    TokenHelper.correctAuxiliaryNegative(it)
+                                    // TODO(Move tokenize to impl?)
+                                    val tokens = tokenizeWithPOS(selectedWord)
+                                    //                                logger.DEBUG(selectedWord)
+                                    //                                val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {
+                                    //                                    TokenHelper.correctAuxiliaryNegative(it)
+                                    //                                }
+                                    //                                val result = BoundaryViterbi.segment(tokens, DatabaseManager.getCache()!!)
+                                    //                                logger.DEBUG(result.joinToString("\n"))
+                                    val inflected = InflectionRules.matchInflection(tokens)
+                                    merged = inflected
                                 }
-                                val result = BoundaryViterbi.segment(passiveProcessed, DatabaseManager.getCache()!!)
-                                logger.DEBUG(result.joinToString("\n"))
-                                merged = result
                             }
-                        }
-
-// Show loading until `merged` is ready
-                        if (merged == null) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(24.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                CircularProgressIndicator()
-                            }
-                        } else {
-                            BottomSheetContent(merged!!, selectedWord) {
-                                showPopup = false
+                            // Show loading until `merged` is ready
+                            if (merged == null) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(24.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    CircularProgressIndicator()
+                                }
+                            } else {
+                                BottomSheetContent(merged!!, selectedWord) {
+                                    showPopup = false
+                                }
                             }
                         }
                     }
