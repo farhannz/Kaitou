@@ -68,7 +68,11 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     private val overlayBroadcastReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
-                "SHUTDOWN_SERVICES" -> stopSelf()
+                "SHUTDOWN_SERVICES" -> {
+                    stopForeground(STOP_FOREGROUND_REMOVE)
+                    stopSelf()
+                }
+
                 "OVERLAY_DISMISSED" -> removeOverlay()
             }
         }

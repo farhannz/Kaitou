@@ -127,14 +127,11 @@ fun FloatingButton(
     isButtonVisibleState: MutableState<Boolean>
 ) {
     val haptic = LocalHapticFeedback.current
-
-    // <<< NEW: local state for the menu
+    
     var showMenu by remember { mutableStateOf(false) }
 
-    // <<< NEW: we need the local density to convert pixels → dp
     val density = LocalDensity.current
     var buttonBounds by remember { mutableStateOf(Rect.Zero) }
-    // <<< NEW: we wrap everything in a Box so we can anchor the popup
     Box(modifier = Modifier.onGloballyPositioned { layoutCoordinates ->
         buttonBounds = layoutCoordinates.boundsInWindow()
     }) {
@@ -182,7 +179,6 @@ fun FloatingButton(
         }
 
 
-        // <<< NEW: render the popup on top
         if (showMenu) {
             PopupMenuAbove(
                 anchorBounds = buttonBounds,
@@ -198,10 +194,6 @@ fun FloatingButton(
 //                    MenuItem("Option 1") { /* TODO */ }
 //                    MenuItem("Option 2") { /* TODO */ }
                     MenuItem("Shutdown") {
-//                        val stopOverlayService = Intent(context, OverlayService::class.java)
-//                        val stopScreenshotService = Intent(context, ScreenshotServiceRework::class.java)
-//                        context.stopService(stopOverlayService)
-//                        context.stopService(stopScreenshotService)
                         context.sendBroadcast(Intent("SHUTDOWN_SERVICES"))
                     }
                 }
