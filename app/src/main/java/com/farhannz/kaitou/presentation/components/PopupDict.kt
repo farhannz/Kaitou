@@ -120,11 +120,14 @@ fun MorphemeItemCard(token: TokenInfo) {
         }
 
         is LookupState.NotFound -> {
-            MorphemeItem(
-                morpheme = token.surface,
-                reading = "",
-                meaning = "",
-                type = posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
+            val entry = MorphemeData(
+                token.surface,
+                "",
+                "",
+                posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
+            )
+            MorphemeCard(
+                entry
             )
         }
     }

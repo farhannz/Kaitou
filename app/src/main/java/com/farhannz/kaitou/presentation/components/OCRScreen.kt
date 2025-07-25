@@ -318,8 +318,8 @@ fun WordPolygonsOverlay(
                                     //                                }
                                     //                                val result = BoundaryViterbi.segment(tokens, DatabaseManager.getCache()!!)
                                     //                                logger.DEBUG(result.joinToString("\n"))
-                                    val inflected = InflectionRules.matchInflection(tokens)
-                                    merged = inflected
+//                                    val inflected = InflectionRules.matchInflection(tokens)
+                                    merged = tokens
                                 }
                             }
                             // Show loading until `merged` is ready

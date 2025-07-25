@@ -43,8 +43,42 @@ class ScreenshotServiceRework : Service() {
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (intent?.action == "SHUTDOWN_SERVICES") {
+                stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
             }
+        }
+    }
+
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun startScreenshotService(intent: Intent) {
+        val captured = mapOf(
+            "resultCode" to intent.getIntExtra("resultCode", Int.MIN_VALUE),
+            "data" to intent.getParcelableExtra("data", Intent::class.java)
+        )
+        if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
+            rc = captured["resultCode"] as Int
+            dataIntent = captured["data"] as Intent
+            mediaProjection =
+                (applicationContext.getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
+                    rc,
+                    dataIntent!!
+                )
+            logger.DEBUG("MediaProjection Permission Granted")
+            val metrics = resources.displayMetrics
+            val width = metrics.widthPixels
+            val height = metrics.heightPixels
+            val density = metrics.densityDpi
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "SingleShot",
+                width,
+                height,
+                density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface,
+                null,
+                null
+            )
         }
     }
 
@@ -60,37 +94,15 @@ class ScreenshotServiceRework : Service() {
             }
 
             "START_SERVICE" -> {
-                val captured = mapOf(
-                    "resultCode" to intent.getIntExtra("resultCode", Int.MIN_VALUE),
-                    "data" to intent.getParcelableExtra("data", Intent::class.java)
-                )
-                if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
-                    rc = captured["resultCode"] as Int
-                    dataIntent = captured["data"] as Intent
-                    mediaProjection =
-                        (applicationContext.getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
-                            rc,
-                            dataIntent!!
-                        )
-                    logger.DEBUG("MediaProjection Permission Granted")
-                    val metrics = resources.displayMetrics
-                    val width = metrics.widthPixels
-                    val height = metrics.heightPixels
-                    val density = metrics.densityDpi
-                    virtualDisplay = mediaProjection?.createVirtualDisplay(
-                        "SingleShot",
-                        width,
-                        height,
-                        density,
-                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                        imageReader?.surface,
-                        null,
-                        null
-                    )
-                }
+                startScreenshotService(intent)
+            }
+
+            "START_AND_CAPTURE" -> {
+                startScreenshotService(intent)
+                requestCapture()
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     fun excludeWindowInsets(bitmap: Bitmap): Bitmap {
@@ -145,10 +157,19 @@ class ScreenshotServiceRework : Service() {
 
     }
 
+    fun requestScreenshotPermission() {
+        val broadcast = Intent("REQUEST_SCREENSHOT_PERMISSION")
+        sendBroadcast(broadcast)
+    }
+
     fun requestCapture() {
         logger.DEBUG("Captured")
         logger.DEBUG("$rc - $dataIntent")
-        prepareScreenshot()
+        if ((rc != RESULT_OK) || (dataIntent == null)) {
+            requestScreenshotPermission()
+        } else {
+            prepareScreenshot()
+        }
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
