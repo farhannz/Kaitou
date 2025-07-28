@@ -127,6 +127,29 @@ interface DictionaryDao {
     )
     suspend fun lookupWordsWithSurface(surfaces: List<String>): List<WordWithSurface>
 
+
+    suspend fun lookupWordRework(token: TokenInfo): List<WordFull> {
+        val surface = token.surface
+        val base = token.baseForm.orEmpty()
+        val reading = token.reading
+        val inflectionType = token.inflectionType
+        val inflectionForm = token.inflectionForm
+
+        // Collect all possible lookup terms
+        val lookupTerms = buildSet {
+            add(surface)
+            if (base.isNotEmpty() && base != surface) add(base)
+            if (reading.isNotEmpty()) add(reading)
+            if (reading.isNotEmpty() && katakanaToHiragana(reading) != reading) add(katakanaToHiragana(reading))
+        }.filter { it.isNotEmpty() }
+
+        if (lookupTerms.isEmpty()) return emptyList()
+        // Get potential matches from dictionary
+        val potentialWords = lookupWordsByTerms(lookupTerms)
+        if (potentialWords.isEmpty()) return emptyList()
+        return potentialWords
+    }
+
     /**
      * Looks up a word using its token information. For ambiguous parts of speech like
      * particles, it strictly filters the results to match the token's role.
@@ -135,61 +158,87 @@ interface DictionaryDao {
      * @return A list of matching `WordFull` objects, correctly filtered.
      */
     suspend fun lookupWord(token: TokenInfo): List<WordFull> {
+        val surface = token.surface
         val base = token.baseForm.orEmpty()
         val reading = token.reading
-        val surface = token.surface
+        val inflectionType = token.inflectionType
+        val inflectionForm = token.inflectionForm
 
-        if (base.isEmpty() && surface.isEmpty()) return emptyList()
-
-        val uniqueTerms = buildSet {
+        // Collect all possible lookup terms
+        val lookupTerms = buildSet {
             add(surface)
-            if (base != surface) add(base)
-        }
+            if (base.isNotEmpty() && base != surface) add(base)
+            if (reading.isNotEmpty()) add(reading)
+            if (reading.isNotEmpty() && katakanaToHiragana(reading) != reading) add(katakanaToHiragana(reading))
+        }.filter { it.isNotEmpty() }
 
-        if (uniqueTerms.isEmpty()) return emptyList()
-
-        val potentialWords = lookupWordsByTerms(uniqueTerms.toList())
-
+        if (lookupTerms.isEmpty()) return emptyList()
+        // Get potential matches from dictionary
+        val potentialWords = lookupWordsByTerms(lookupTerms)
         if (potentialWords.isEmpty()) return emptyList()
 
+        // Enhanced POS mapping with verb type specificity
         val tokenPosCategory = token.partOfSpeech.substringBefore("-")
-        val posMapping = getPosMapping()
-        val mappedPOS = posMapping[token.partOfSpeech]
-            ?: posMapping[tokenPosCategory]
-            ?: emptyList()
-
-        val ambiguousCategories = setOf("助詞", "助動詞")
-        val filteredWords = potentialWords.filter { word ->
-            // Strict POS filtering for ambiguous parts of speech
-            if (tokenPosCategory in ambiguousCategories) {
-                word.senses.any { sense ->
-                    val posTags = sense.sense.partOfSpeech
-                        .removeSurrounding("[", "]")
-                        .split(",")
-                        .map { it.trim().removeSurrounding("\"") }
-
-                    posTags.any { it in mappedPOS }
+        val mappedPOS = when {
+            // Special handling for verbs based on inflection type
+            tokenPosCategory == "動詞" && inflectionType.isNotEmpty() -> {
+                when (inflectionType) {
+                    "サ変・スル" -> listOf("vs", "vs-i", "vs-s")
+                    "カ変・クル" -> listOf("vk")
+                    "一段" -> listOf("v1", "v1-s", "vz")
+                    "五段" -> listOf("v5", "v5u", "v5k", "v5g", "v5s", "v5t", "v5n", "v5b", "v5m", "v5r", "v5k-s")
+                    else -> posMapping[token.partOfSpeech] ?: posMapping[tokenPosCategory] ?: emptyList()
                 }
-            } else true // Keep broader matches for other categories
-        }
-
-        // Optionally: retain only exact/normalized form matches
-        val filteredByForm = filteredWords.filter { word ->
-            val allForms = word.kanji.map { it.text } + word.kana.map { it.text }
-            allForms.any { form ->
-                form == surface || form == base
             }
+
+            else -> posMapping[token.partOfSpeech] ?: posMapping[tokenPosCategory] ?: emptyList()
         }
 
-        return filteredByForm
+        // Filter by matching forms (surface/base/reading)
+        val scoredMatches = potentialWords.map { word ->
+            val forms = (word.kanji.map { it.text } + word.kana.map { it.text }).toSet()
+
+            val formScore = when {
+                forms.contains(base) -> 3
+                forms.contains(surface) -> 2
+                forms.contains(reading) -> 1
+                else -> 0
+            }
+
+            val posMatch = word.senses.any { sense ->
+                val posTags = sense.sense.partOfSpeech
+                    .removeSurrounding("[", "]")
+                    .splitToSequence(",")
+                    .map { it.trim().removeSurrounding("\"") }
+                    .toList()
+
+                val grammarTypes = listOf("prt", "aux-v", "aux-adj", "conj", "int", "exp")
+
+                when {
+                    // Special case: if token is particle or auxiliary, only accept grammar types
+                    tokenPosCategory.startsWith("助詞") || tokenPosCategory.startsWith("助動詞") ->
+                        posTags.any { it in grammarTypes }
+
+                    token.partOfSpeech.startsWith("接頭詞") ->
+                        "pref" in posTags
+
+                    mappedPOS.isNotEmpty() -> posTags.any { it in mappedPOS }
+
+
+                    else -> true
+                }
+            }
+
+            Triple(word, formScore, posMatch)
+        }
+
+        // Enhanced sense filtering with domain awareness
+        return scoredMatches
+            .filter { it.third } // POS match
+            .sortedByDescending { it.second } // Higher form score first
+            .map { it.first }
     }
 
-    /**
-     * Helper function to provide the mapping from Kuromoji POS to JMdict POS tags.
-     */
-    private fun getPosMapping(): Map<String, List<String>> {
-        return posMapping
-    }
 }
 
 
