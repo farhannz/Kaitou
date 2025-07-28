@@ -127,7 +127,7 @@ fun FloatingButton(
     isButtonVisibleState: MutableState<Boolean>
 ) {
     val haptic = LocalHapticFeedback.current
-    
+
     var showMenu by remember { mutableStateOf(false) }
 
     val density = LocalDensity.current
@@ -147,11 +147,15 @@ fun FloatingButton(
                     .pointerInput(Unit) {
                         detectTapGestures(
                             onLongPress = {
-                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
-                                showMenu = true                 // <<< NEW
-                                onLongPress()
+                                if (isButtonVisibleState.value) {
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    showMenu = true
+                                    onLongPress()
+                                }
                             },
-                            onTap = { onTap() }
+                            onTap = {
+                                if (isButtonVisibleState.value) onTap()
+                            }
                         )
                     }
                     .pointerInput(Unit) {
@@ -163,10 +167,12 @@ fun FloatingButton(
                                 haptic.performHapticFeedback(HapticFeedbackType.GestureEnd)
                             }
                         ) { _, dragAmount ->
-                            onDrag(
-                                dragAmount.x.roundToInt(),
-                                dragAmount.y.roundToInt()
-                            )
+                            if (isButtonVisibleState.value) {
+                                onDrag(
+                                    dragAmount.x.roundToInt(),
+                                    dragAmount.y.roundToInt()
+                                )
+                            }
                         }
                     }
                     .size(60.dp)
