@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.ElevatedCard
@@ -67,33 +68,35 @@ fun StickyHeader(
             shadowElevation = 4.dp,
             color = MaterialTheme.colorScheme.surfaceContainer
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = title,
-                    fontSize = fontSize,
-                    lineHeight = fontSize * 1.4f,
-                    fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center
-                )
+            SelectionContainer {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = title,
+                        fontSize = fontSize,
+                        lineHeight = fontSize * 1.4f,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.weight(1f),
+                        textAlign = TextAlign.Center
+                    )
 
-                //            IconButton(
-                //                onClick = onDismiss,
-                //                modifier = Modifier.size(24.dp)
-                //            ) {
-                //                Icon(
-                //                    imageVector = Icons.Default.Close,
-                //                    contentDescription = "Close",
-                //                    tint = MaterialTheme.colorScheme.onSurface
-                //                )
-                //            }
+                    //            IconButton(
+                    //                onClick = onDismiss,
+                    //                modifier = Modifier.size(24.dp)
+                    //            ) {
+                    //                Icon(
+                    //                    imageVector = Icons.Default.Close,
+                    //                    contentDescription = "Close",
+                    //                    tint = MaterialTheme.colorScheme.onSurface
+                    //                )
+                    //            }
+                }
             }
         }
 
@@ -133,22 +136,24 @@ fun MorphemeCard(
                     .fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Kanji Column
-                Column(
-                    horizontalAlignment = Alignment.Start,
-                ) {
-                    Text(
-                        text = data.text,
-                        fontSize = 24.sp,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                    Text(
-                        text = data.reading,
-                        fontSize = 12.sp,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.secondary
-                    )
+                SelectionContainer {
+                    // Kanji Column
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                    ) {
+                        Text(
+                            text = data.text,
+                            fontSize = 24.sp,
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = data.reading,
+                            fontSize = 12.sp,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.width(16.dp))
                 // Meaning Column
