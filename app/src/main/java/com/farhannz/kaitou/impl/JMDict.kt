@@ -9,37 +9,56 @@ import com.farhannz.kaitou.helpers.posMapping
 import kotlin.collections.joinToString
 
 object JMDict : DBDictionary {
+    const val isRework = true
     override suspend fun lookup(token: TokenInfo): LookupResult {
-        val result = DatabaseManager.getDatabase().dictionaryDao().lookupWord(token)
+        val dao = DatabaseManager.getDatabase().dictionaryDao()
+        val result = if (isRework) dao.lookupWordRework(token) else dao.lookupWord(token)
         if (result.isEmpty()) {
             return LookupResult.Error("No results")
         }
-        val entry = result.first()
+        val bestWord = result.first()
 
-        // Use the matched kanji/kana from lookupWord result
-        val surfaceForm = entry.kanji.find { it.text == token.surface }?.text
-            ?: entry.kana.find { it.text == token.surface }?.text
-            ?: entry.kanji.find { it.text == token.baseForm }?.text
-            ?: entry.kana.find { it.text == token.baseForm }?.text
-            ?: entry.kanji.find { it.common == true }?.text
-            ?: entry.kana.find { it.common == true }?.text
-            ?: token.surface
+        val dictForm = token.baseForm?.takeIf { it.isNotEmpty() } ?: token.surface
 
-        val reading = entry.kana.find { it.text == token.surface }?.text
-            ?: entry.kana.find { it.text == token.baseForm }?.text
-            ?: entry.kana.find { it.common == true }?.text
-            ?: entry.kana.firstOrNull()?.text
-            ?: ""
+        val kanjiLine = bestWord.kanji.find { it.text == dictForm }
+        val kanaLine = bestWord.kana.find { it.text == dictForm } ?: bestWord.kana.first()
 
-        val meaning = entry.senses.firstOrNull()?.glosses
-            ?.firstOrNull { it.lang == "eng" }?.text ?: ""
+        val surfaceForm = kanjiLine?.text ?: dictForm
+        val reading = kanaLine.text
+
+// DAO already filtered senses; pick the first one that has the right POS
+        val bestSense = bestWord.senses.firstOrNull { s ->
+            when {
+                token.inflectionType == "サ変・スル" -> "vs" in s.sense.partOfSpeech
+                else -> true
+            }
+        } ?: bestWord.senses.first()
+
+        val meaning = if (token.metadata.containsKey("jmdict_tags")) {
+            token.metadata["merged_meaning"] as String
+        } else {
+            bestSense.glosses.firstOrNull { it.lang == "eng" }?.text ?: ""
+        }
+        val displayPos = buildString {
+            append(
+                posMapping[token.partOfSpeech]?.first()
+                    ?: posMapping[token.partOfSpeech.substringBefore("-")]?.first()
+                    ?: ""
+            )
+            if (token.inflectionType.isNotEmpty()) {
+                if (isNotEmpty()) append(" • ")
+                append("${token.inflectionType} ${token.inflectionForm}")
+            }
+        }
+
+
 
         return LookupResult.Success(
             MorphemeData(
                 surfaceForm,
                 reading,
                 meaning,
-                posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
+                displayPos
             )
         )
     }
