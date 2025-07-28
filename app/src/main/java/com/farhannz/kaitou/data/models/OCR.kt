@@ -34,7 +34,8 @@ data class TokenInfo(
     val partOfSpeech: String,
     val reading: String = "",
     val inflectionType: String = "",
-    val inflectionForm: String = ""
+    val inflectionForm: String = "",
+    val metadata: Map<String, Any> = emptyMap()
 )
 
 sealed class OCRUIState {
