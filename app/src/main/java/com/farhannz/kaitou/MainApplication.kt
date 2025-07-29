@@ -5,6 +5,7 @@ import com.farhannz.kaitou.domain.OcrEngine
 import com.farhannz.kaitou.domain.TextRecognizer
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
+import com.farhannz.kaitou.helpers.TransformerManager
 import com.farhannz.kaitou.impl.EngineType
 import com.farhannz.kaitou.impl.PaddleEngineFactory
 import com.farhannz.kaitou.impl.PaddleTextRecognizer
@@ -24,6 +25,7 @@ class MainApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         DatabaseManager.initialize(this)
+        TransformerManager.initialize(this)
         if (OpenCVLoader.initLocal()) {
             logger.DEBUG("OpenCV initialized successfully")
         } else {
