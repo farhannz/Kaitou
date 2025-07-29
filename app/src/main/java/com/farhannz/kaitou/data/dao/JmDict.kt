@@ -1,5 +1,6 @@
 package com.farhannz.kaitou.data.dao
 
+import android.util.Log
 import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Embedded
@@ -8,8 +9,11 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import com.farhannz.kaitou.data.models.*
+import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.helpers.katakanaToHiragana
+import com.farhannz.kaitou.helpers.mapPosToJmdict
 import com.farhannz.kaitou.helpers.posMapping
+import kotlinx.serialization.json.Json
 
 @Dao
 interface DictionaryDao {
@@ -127,11 +131,12 @@ interface DictionaryDao {
     )
     suspend fun lookupWordsWithSurface(surfaces: List<String>): List<WordWithSurface>
 
-
-    suspend fun lookupWordRework(token: TokenInfo): List<WordFull> {
+    suspend fun lookupWordRework(token: TokenInfo, selectedEmbedding: FloatArray): List<WordFull> {
+        val json = Json { ignoreUnknownKeys = true }
         val surface = token.surface
         val base = token.baseForm.orEmpty()
         val reading = token.reading
+        val pos = token.partOfSpeech
         val inflectionType = token.inflectionType
         val inflectionForm = token.inflectionForm
 
@@ -139,15 +144,30 @@ interface DictionaryDao {
         val lookupTerms = buildSet {
             add(surface)
             if (base.isNotEmpty() && base != surface) add(base)
-            if (reading.isNotEmpty()) add(reading)
-            if (reading.isNotEmpty() && katakanaToHiragana(reading) != reading) add(katakanaToHiragana(reading))
         }.filter { it.isNotEmpty() }
 
         if (lookupTerms.isEmpty()) return emptyList()
         // Get potential matches from dictionary
         val potentialWords = lookupWordsByTerms(lookupTerms)
         if (potentialWords.isEmpty()) return emptyList()
-        return potentialWords
+
+
+        val targetPos = mapPosToJmdict(pos, inflectionType)
+        val mappedPotentialWords = potentialWords.mapNotNull { word ->
+            val matchingSenses = word.senses.filter { sense ->
+                val tokenPos = json.decodeFromString<List<String>>(sense.sense.partOfSpeech)
+                tokenPos.any { targetPos.contains(it) }
+            }
+            if (matchingSenses.isNotEmpty()) {
+                word.copy(senses = matchingSenses)
+            } else {
+                null
+            }
+        }
+        Log.d("LookupWordRework", token.toString())
+        TokenHelper.rankDictionaryEntries(mappedPotentialWords, selectedEmbedding, targetPos)
+
+        return mappedPotentialWords
     }
 
     /**

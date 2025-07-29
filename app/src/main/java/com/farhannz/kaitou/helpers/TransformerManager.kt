@@ -13,8 +13,8 @@ import java.util.Date
 import kotlin.io.path.Path
 
 object TransformerManager {
-    lateinit var tokenizer: HuggingFaceTokenizer
-    lateinit var model: OnnxModel
+    private lateinit var tokenizer: HuggingFaceTokenizer
+    private lateinit var model: OnnxModel
 
     fun copyAssetToCache(context: Context, assetFolder: String = "", assetName: String): String {
         val assetSubPath = "${assetFolder}/$assetName" // use relative asset path
@@ -30,6 +30,12 @@ object TransformerManager {
             }
         }
         return outFile.absolutePath
+    }
+
+    fun getEmbeddings(text: String): FloatArray {
+        val ids = tokenizer.encode(text).ids
+        val embeddings = model.run(ModelInput(ids))
+        return embeddings.output
     }
 
     fun copyAssetFolderToCache(

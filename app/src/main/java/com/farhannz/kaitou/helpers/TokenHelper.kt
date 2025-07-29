@@ -1,9 +1,184 @@
 package com.farhannz.kaitou.helpers
 
+//import ai.djl.nn.core.Embedding
+import com.farhannz.kaitou.data.models.Kanji
 import com.farhannz.kaitou.data.models.TokenInfo
 import com.farhannz.kaitou.`data`.models.SenseWithGlosses
+import com.farhannz.kaitou.data.models.WordFull
+import com.farhannz.kaitou.domain.ModelInput
+import kotlinx.serialization.json.Json
 
 object TokenHelper {
+    private val LOG_TAG = TokenHelper::class.simpleName
+    private val logger = Logger(LOG_TAG!!)
+    private val json = Json { ignoreUnknownKeys = true }
+
+
+    fun cosineSimilarity(a: List<Float>, b: List<Float>): Float {
+        require(a.size == b.size) { "Vectors must have the same length" }
+
+        var dot = 0.0
+        var normA = 0.0
+        var normB = 0.0
+
+        for (i in a.indices) {
+            dot += a[i] * b[i]
+            normA += a[i] * a[i]
+            normB += b[i] * b[i]
+        }
+
+        return (dot / (kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB))).toFloat()
+    }
+
+    data class RankedSense(
+        val wordId: String,
+        val senseId: Int,
+        val score: Float,
+        val kanjiTexts: List<String>,
+        val kanaTexts: List<String>,
+        val glossTexts: List<String>,
+        val partOfSpeech: List<String>,
+    )
+
+    fun rankDictionaryEntries(
+        entries: List<WordFull>,
+        sentenceEmbedding: FloatArray,
+        mappedPOS: List<String>
+    ): List<Pair<TokenInfo, String>> {
+        if (entries.isEmpty()) {
+            println("No dictionary entries found")
+            return emptyList()
+        }
+
+        println("Found ${entries.size} dictionary entries:")
+        // 1. Filter entries by POS match
+        val posMatched = entries.filter { wordFull ->
+            wordFull.senses.any { (sense, glosses) ->
+                val pos = json.decodeFromString<List<String>>(sense.partOfSpeech)
+                pos.any { it in mappedPOS }
+            }
+        }
+
+        // 2. Deduplicate by wordId
+        val unique = posMatched.distinctBy { it.word.id }
+        val results = mutableListOf<RankedSense>()
+        for (word in unique) {
+            val kanjiMap = word.kanji.associateBy { it.kanjiId }
+            val kanaMap = word.kana.associateBy { it.kanaId }
+            val relevantKanji = mutableListOf<String>()
+            val relevantKana = mutableListOf<String>()
+            for (senseWithGloss in word.senses) {
+                val sense = senseWithGloss.sense
+                val glosses = senseWithGloss.glosses.map { it.text }
+                try {
+                    // Determine which kanji/kana apply to this sense
+                    val kanji = if (sense.appliesToKanji.contains("*")) {
+                        word.kanji.map { it.text }
+                    } else {
+                        sense.appliesToKanji.mapNotNull { id ->
+                            kanjiMap.getValue(id.code).text
+                        }
+                    }
+                    relevantKanji.addAll(kanji)
+
+                    val kana = if (sense.appliesToKana.contains("*")) {
+                        word.kana.map { it.text }
+                    } else {
+                        sense.appliesToKana.mapNotNull { id ->
+                            kanaMap.getValue(id.code).text
+                        }
+                    }
+                    relevantKana.addAll(kana)
+                } catch (e: Throwable) {
+                    logger.ERROR(e.toString())
+                }
+
+                // Collect all texts to embed
+                val textsToEmbed = (relevantKanji + relevantKana + glosses).distinct()
+
+                // Get max similarity from any of those
+                var maxScore = -1.0f
+                for (text in textsToEmbed) {
+                    val vec = TransformerManager.getEmbeddings(text)
+                    val score = cosineSimilarity(sentenceEmbedding.toList(), vec.toList())
+                    if (score > maxScore) maxScore = score
+                }
+
+                results.add(
+                    RankedSense(
+                        wordId = word.word.id,
+                        senseId = sense.senseId!!,
+                        score = maxScore,
+                        kanjiTexts = relevantKanji,
+                        kanaTexts = relevantKana,
+                        glossTexts = glosses,
+                        partOfSpeech = json.decodeFromString<List<String>>(sense.partOfSpeech)
+                    )
+                )
+            }
+        }
+
+        logger.DEBUG(results.joinToString(","))
+// Sort by score descending and take top 3 (or more if needed)
+//        val top = scored.sortedByDescending { it.third }.take(3)
+//        logger.DEBUG(top.toString())
+//        val bestSenses = entries.map { entry ->
+//            entry.senses.map { (sense, glosses )->
+//                val score = glosses.map {
+//
+//                }
+//            }
+//        }
+//        val posMatched = entries
+//            .filter { entry ->
+//                val posList = entry.senses.map {
+//                    json.decodeFromString<List<String>>(it.sense.partOfSpeech)
+//                }.distinctBy { it }
+//                posList.any { it.any { pos -> pos in mappedPOS } }
+//            }
+//
+//        posMatched.forEach {
+//            logger.DEBUG(it.toString())
+//        }
+
+//        val unique = posMatched.distinctBy { it["word_id"] }
+
+
+//        val textToVec = mutableMapOf<String, Embedding>()
+//        unique.mapNotNull { entry ->
+//            entry["kanji_text"] as? String          // 1st choice
+//                ?: entry["kana_text"] as? String    // 2nd choice
+//                ?: entry["gloss_text"] as? String   // last resort
+//        }.distinct().forEach { text ->
+//            textToVec[text] = if (useServer) {
+//                sendEmbedRequest(text)
+//            } else {
+//                val ids = tokenizer.encode(text).ids
+//                val result = model.run(ModelInput(ids))
+//                Embedding(result.output.toList())
+//            }
+//        }
+//
+////        // 3. Produce the scored list
+//        val scored = posMatched.map { entry ->
+//            val vec =
+//            val score = cosineSimilarity(sentenceEmbedding.value, vec.value)
+//            entry to score
+//        }
+////
+//        return scored.take(3).map {
+//            val surface = (it.first["kanji_text"] as String?) ?: it.first["kana_text"] as String
+//            val reading = (it.first["kana_text"] as String)
+//            val meaning = (it.first["gloss_text"] as String)
+//            val pos = (it.first["part_of_speech"] as String)
+//
+//            Pair(
+//                TokenInfo("", surface, pos, reading, "", ""),
+//                "$meaning (cosine similarity: ${"%.2f".format(it.second)})"
+//            )
+//        }
+        return emptyList()
+    }
 
     fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>?, maxGram: Int = 6): List<TokenInfo> {
         // Add before merging
