@@ -10,6 +10,7 @@ import androidx.room.Query
 import androidx.room.Transaction
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.TokenHelper
+import com.farhannz.kaitou.helpers.TransformerManager
 import com.farhannz.kaitou.helpers.katakanaToHiragana
 import com.farhannz.kaitou.helpers.mapPosToJmdict
 import com.farhannz.kaitou.helpers.posMapping
@@ -131,7 +132,11 @@ interface DictionaryDao {
     )
     suspend fun lookupWordsWithSurface(surfaces: List<String>): List<WordWithSurface>
 
-    suspend fun lookupWordRework(token: TokenInfo, selectedEmbedding: FloatArray): List<WordFull> {
+    suspend fun lookupWordRework(
+        tokenIdx: Int,
+        sentenceTokens: List<TokenInfo>
+    ): List<WordFull> {
+        val token = sentenceTokens[tokenIdx]
         val json = Json { ignoreUnknownKeys = true }
         val surface = token.surface
         val base = token.baseForm.orEmpty()
@@ -139,13 +144,12 @@ interface DictionaryDao {
         val pos = token.partOfSpeech
         val inflectionType = token.inflectionType
         val inflectionForm = token.inflectionForm
-
         // Collect all possible lookup terms
         val lookupTerms = buildSet {
             add(surface)
             if (base.isNotEmpty() && base != surface) add(base)
         }.filter { it.isNotEmpty() }
-
+        println("Lookup term ${lookupTerms}")
         if (lookupTerms.isEmpty()) return emptyList()
         // Get potential matches from dictionary
         val potentialWords = lookupWordsByTerms(lookupTerms)
@@ -164,10 +168,27 @@ interface DictionaryDao {
                 null
             }
         }
-        Log.d("LookupWordRework", token.toString())
-        TokenHelper.rankDictionaryEntries(mappedPotentialWords, selectedEmbedding, targetPos)
+        println("after mapped pos")
+        mappedPotentialWords.forEach { println(it) }
+        if (mappedPotentialWords.size == 1) return mappedPotentialWords
+        val filtered = mappedPotentialWords.filter { word ->
+            val baseReading = TokenHelper.getBaseReadingFromInflected(token)
+            println("Base Reading $baseReading")
+            val hasMatchingReading = word.kana.any { kana ->
+                kana.text == baseReading
+            }
 
-        return mappedPotentialWords
+            val hasMatchingKanji = word.kanji.any { kanji ->
+                kanji.text == token.baseForm
+            }
+            val hasMatchingKana = word.kana.any { kana ->
+                kana.text == token.surface
+            }
+            (hasMatchingKanji || hasMatchingKana) && hasMatchingReading
+        }
+        println("After filter")
+        filtered.forEach { println(it.kana.joinToString(",")) }
+        return filtered
     }
 
     /**
@@ -189,7 +210,9 @@ interface DictionaryDao {
             add(surface)
             if (base.isNotEmpty() && base != surface) add(base)
             if (reading.isNotEmpty()) add(reading)
-            if (reading.isNotEmpty() && katakanaToHiragana(reading) != reading) add(katakanaToHiragana(reading))
+            if (reading.isNotEmpty() && katakanaToHiragana(reading) != reading) add(
+                katakanaToHiragana(reading)
+            )
         }.filter { it.isNotEmpty() }
 
         if (lookupTerms.isEmpty()) return emptyList()
@@ -206,8 +229,22 @@ interface DictionaryDao {
                     "サ変・スル" -> listOf("vs", "vs-i", "vs-s")
                     "カ変・クル" -> listOf("vk")
                     "一段" -> listOf("v1", "v1-s", "vz")
-                    "五段" -> listOf("v5", "v5u", "v5k", "v5g", "v5s", "v5t", "v5n", "v5b", "v5m", "v5r", "v5k-s")
-                    else -> posMapping[token.partOfSpeech] ?: posMapping[tokenPosCategory] ?: emptyList()
+                    "五段" -> listOf(
+                        "v5",
+                        "v5u",
+                        "v5k",
+                        "v5g",
+                        "v5s",
+                        "v5t",
+                        "v5n",
+                        "v5b",
+                        "v5m",
+                        "v5r",
+                        "v5k-s"
+                    )
+
+                    else -> posMapping[token.partOfSpeech] ?: posMapping[tokenPosCategory]
+                    ?: emptyList()
                 }
             }
 
@@ -301,5 +338,3 @@ interface WordGlossDao {
         jmdictPos: String
     ): List<WordGlossEntry>
 }
-
-

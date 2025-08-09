@@ -21,7 +21,8 @@ data class InferenceResult(val output: FloatArray) {
     }
 }
 
-data class ModelInput(val data: LongArray) {
+data class ModelInputBatch(val data: List<LongArray>, val mask: List<LongArray>)
+data class ModelInput(val data: LongArray, val mask: LongArray) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (javaClass != other?.javaClass) return false

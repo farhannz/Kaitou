@@ -35,6 +35,7 @@ fun mapPosToJmdict(pos: String, inflectionType: String? = null): List<String> {
     for (length in minOf(3, posList.size) downTo 1) {
         val key = posList.take(length).joinToString("-")
         posMapping[key]?.let { allPossibleMappings.addAll(it) }
+        if (allPossibleMappings.isNotEmpty()) break
     }
 
 //    val normalized = mutableSetOf<String>()
@@ -61,6 +62,7 @@ fun mapPosToJmdict(pos: String, inflectionType: String? = null): List<String> {
 }
 
 val posMapping: Map<String, List<String>> = mapOf(
+    "名詞-代名詞-一般" to listOf("pn"),
     // Nouns - Common
     "名詞-普通" to listOf("n"),
     "名詞-一般" to listOf("n"),
@@ -71,8 +73,6 @@ val posMapping: Map<String, List<String>> = mapOf(
     "名詞-固有名詞-人名" to listOf("n", "n-pr", "person", "given", "surname"),
     "名詞-固有名詞-地名" to listOf("n", "n-pr", "place"),
     "名詞-固有名詞-組織" to listOf("n", "n-pr", "organization"),
-
-    "名詞-代名詞-一般" to listOf("pn"),
 
     // Numerals and counters
     "名詞-数詞" to listOf("num"),
@@ -143,7 +143,8 @@ val posMapping: Map<String, List<String>> = mapOf(
     // Fallback general categories
     "名詞" to listOf("n"),
     "動詞" to listOf("v5", "v1", "vk", "vs"),
-    "形容詞" to listOf("adj-i")
+    "形容詞" to listOf("adj-i"),
+    "複合表現" to listOf("compound")
 )
 
 
@@ -261,7 +262,8 @@ object BoundaryViterbi {
                 val cost = if (surface in dict) {
                     IN_DICT_BONUS * l
                 } else {
-                    val baseform = tokens.subList(i, i + l).joinToString("") { it.baseForm.toString() }
+                    val baseform =
+                        tokens.subList(i, i + l).joinToString("") { it.baseForm.toString() }
                     if (baseform in dict) IN_DICT_BONUS * l * 0.9 else OOV_COST * l
                 }
                 dag[i + l] += Edge(i, i + l, cost)

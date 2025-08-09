@@ -59,7 +59,9 @@ fun StickyHeader(
     }
     val useDarkTheme = isSystemInDarkTheme()
     val colors =
-        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(LocalContext.current)
+        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(
+            LocalContext.current
+        )
 
     MaterialTheme(colorScheme = colors) {
         Surface(
@@ -121,7 +123,9 @@ fun MorphemeCard(
         else -> 14.sp
     }
     val colors =
-        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(LocalContext.current)
+        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(
+            LocalContext.current
+        )
     MaterialTheme(
         colorScheme = colors
     ) {
@@ -161,8 +165,11 @@ fun MorphemeCard(
                     horizontalAlignment = Alignment.Start, // Align to start (left)
                     modifier = Modifier.weight(1f)
                 ) {
+                    val meaning = data.meaning.ifEmpty {
+                        "Not found in dictionary"
+                    }
                     Text(
-                        text = data.meaning,
+                        text = meaning,
                         fontSize = fontSize,
                         style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.primary

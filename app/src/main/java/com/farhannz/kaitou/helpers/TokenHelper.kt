@@ -1,33 +1,52 @@
 package com.farhannz.kaitou.helpers
 
 //import ai.djl.nn.core.Embedding
-import com.farhannz.kaitou.data.models.Kanji
 import com.farhannz.kaitou.data.models.TokenInfo
-import com.farhannz.kaitou.`data`.models.SenseWithGlosses
 import com.farhannz.kaitou.data.models.WordFull
-import com.farhannz.kaitou.domain.ModelInput
 import kotlinx.serialization.json.Json
+import kotlin.math.exp
+import kotlin.math.max
+import kotlin.math.sqrt
 
 object TokenHelper {
     private val LOG_TAG = TokenHelper::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private val json = Json { ignoreUnknownKeys = true }
 
+    val coordinatingParticles = mapOf(
+        "と" to "and / with (coordinating particle)",
+        "や" to "and / such as (listing)",
+        "とか" to "and / or (informal listing)",
+        "も" to "also / too",
+        "し" to "and / moreover"
+    )
 
-    fun cosineSimilarity(a: List<Float>, b: List<Float>): Float {
-        require(a.size == b.size) { "Vectors must have the same length" }
+    val sentenceFinalParticles = mapOf(
+        "か" to "question marker",
+        "ね" to "seeking agreement / softener",
+        "よ" to "assertion / emphasis",
+        "な" to "prohibition / exclamation (masc.)",
+        "ぞ" to "strong assertion (masc.)",
+        "さ" to "casual emphasis",
+        "わ" to "soft feminine tone",
+        "の" to "soft assertion / explanation",
+        "ぜ" to "masculine emphasis / encouragement",
+        "かな" to "self-questioning / uncertainty",
+        "かしら" to "I wonder… (feminine)"
+    )
 
+    fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
+        require(a.size == b.size)
         var dot = 0.0
         var normA = 0.0
         var normB = 0.0
-
         for (i in a.indices) {
             dot += a[i] * b[i]
             normA += a[i] * a[i]
             normB += b[i] * b[i]
         }
-
-        return (dot / (kotlin.math.sqrt(normA) * kotlin.math.sqrt(normB))).toFloat()
+        val denom = sqrt(normA) * sqrt(normB)
+        return if (denom == 0.0) Float.NEGATIVE_INFINITY else (dot / denom).toFloat()
     }
 
     data class RankedSense(
@@ -40,11 +59,286 @@ object TokenHelper {
         val partOfSpeech: List<String>,
     )
 
+    data class RankedContextBag(
+        val ranked: RankedSense,
+        val context: String,
+        val gloss: String
+    )
+
+    // Utility to L2‐normalize your float arrays
+    fun normalize(vec: FloatArray): FloatArray {
+        val norm = sqrt(vec.map { it * it }.sum())
+        return if (norm > 0f) vec.map { it / norm }.toFloatArray() else vec
+    }
+
+    fun flat2DArray(input: Array<LongArray>): LongArray {
+        val batchSize = input.size
+        val seqLen = input[0].size
+        val flattened = LongArray(batchSize * seqLen)
+        for (i in input.indices) {
+            System.arraycopy(input[i], 0, flattened, i * seqLen, seqLen)
+        }
+
+        return flattened
+    }
+
+    fun padSequence(input: LongArray, maxLen: Int): LongArray {
+        val padded = input + LongArray(maxLen - input.size) { 0L }
+        return padded
+    }
+
+    fun sigmoid(logits: Float): Float {
+        return 1.0f / (1.0f + exp(-logits))
+    }
+
+    fun softmax(logits: List<Float>): FloatArray {
+        val maxLogit = logits.maxOrNull() ?: 0f
+        val expLogits = FloatArray(logits.size) { exp(logits[it] - maxLogit) }
+        val sumExp = expLogits.sum()
+        return FloatArray(logits.size) { expLogits[it] / sumExp }
+    }
+
+    // This function can be a top-level function or a member of TokenHelper, etc.
+    fun extractLocalContextPhrase(
+        currentTokenIndex: Int,
+        allTokens: List<TokenInfo>,
+        k: Int = 3
+    ): String? {
+        if (allTokens.isEmpty()) return null
+        val startIndex = maxOf(0, currentTokenIndex - k)
+        val endIndex = minOf(allTokens.size - 1, currentTokenIndex + k)
+
+        val clauseStart = findClauseStart(currentTokenIndex, allTokens, startIndex)
+        val clauseEnd = findClauseEnd(currentTokenIndex, allTokens, endIndex)
+
+        // Ensure valid boundaries
+        if (clauseStart > clauseEnd) {
+            // Fallback to original window if clause detection fails
+            val localTokens = allTokens.subList(startIndex, endIndex + 1)
+            return localTokens.joinToString("") { it.surface }
+        }
+
+        val localTokens = allTokens.subList(clauseStart, clauseEnd + 1)
+//        logger.DEBUG(localTokens.toString())
+        return localTokens.joinToString("") { it.surface }
+    }
+
+    fun getBaseReadingFromInflected(token: TokenInfo): String {
+        val inflected = katakanaToHiragana(token.reading)
+
+        return when (token.inflectionType) {
+            "一段" -> inflected + "る"
+            "五段・ラ行" -> when (token.inflectionForm) {
+                "未然形", "連用形" -> inflected.dropLast(1) + "る"
+                else -> inflected
+            }
+
+            "五段・カ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "く"
+                "連用形" -> inflected.dropLast(1) + "く"
+                else -> inflected
+            }
+
+            "五段・ガ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "ぐ"
+                "連用形" -> inflected.dropLast(1) + "ぐ"
+                else -> inflected
+            }
+
+            "五段・カ行イ音便" -> when (token.inflectionForm) {
+                "連用形" -> inflected.dropLast(1) + "く"  // きい → きく
+                "未然形" -> inflected.dropLast(1) + "く"  // きか → きく
+                else -> inflected
+            }
+
+            "五段・サ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "す"
+                "連用形" -> inflected.dropLast(1) + "す"
+                else -> inflected
+            }
+
+            "五段・タ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "つ"
+                "連用形" -> inflected.dropLast(1) + "つ"
+                else -> inflected
+            }
+
+            "五段・ナ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "ぬ"
+                "連用形" -> inflected.dropLast(1) + "ぬ"
+                else -> inflected
+            }
+
+            "五段・バ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "ぶ"
+                "連用形" -> inflected.dropLast(1) + "ぶ"
+                else -> inflected
+            }
+
+            "五段・マ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "む"
+                "連用形" -> inflected.dropLast(1) + "む"
+                else -> inflected
+            }
+
+            "五段・ワ行" -> when (token.inflectionForm) {
+                "未然形" -> inflected.dropLast(1) + "う"
+                "連用形" -> inflected.dropLast(1) + "う"
+                else -> inflected
+            }
+
+            else -> inflected
+        }
+    }
+
+    private fun findClauseStart(currentIndex: Int, tokens: List<TokenInfo>, minIndex: Int): Int {
+        for (i in currentIndex downTo minIndex) {
+            val token = tokens[i]
+            if (token.partOfSpeech.startsWith("助詞") || token.surface in listOf(
+                    "、",
+                    "。",
+                    "が",
+                    "は"
+                )
+            ) {
+                return maxOf(minIndex, minOf(i + 1, currentIndex)) // Ensure start ≤ currentIndex
+            }
+        }
+        return minIndex
+    }
+
+    private fun findClauseEnd(currentIndex: Int, tokens: List<TokenInfo>, maxIndex: Int): Int {
+        for (i in currentIndex..maxIndex) {
+            val token = tokens[i]
+            if (token.partOfSpeech.startsWith("助詞") || token.surface in listOf(
+                    "、",
+                    "。",
+                    "が",
+                    "は",
+                    "を",
+                    "に"
+                )
+            ) {
+                return minOf(maxIndex, maxOf(i, currentIndex)) // Ensure end ≥ currentIndex
+            }
+        }
+        return maxIndex
+    }
+
+    fun rerankGlosses(
+        entries: List<WordFull>,
+        localContext: String,
+        topN: Int = 3
+    ): List<RankedSense> {
+        val rankedContextBags = mutableListOf<RankedContextBag>()
+        entries.forEach { word ->
+            val kanjiMap = word.kanji.associateBy { it.kanjiId }
+            val kanaMap = word.kana.associateBy { it.kanaId }
+            val relevantKanji = mutableListOf<String>()
+            val relevantKana = mutableListOf<String>()
+            val senses = word.senses
+            for (senseWithGloss in senses) {
+                val sense = senseWithGloss.sense
+                val glosses = senseWithGloss.glosses.map { it.text }
+                val examples = senseWithGloss.examples
+                val exampleTextBySenseId: Map<Int, String> = examples.associateBy(
+                    { it.example.senseId },
+                    { it.sentences.firstOrNull()?.text ?: "" }
+                )
+
+                try {
+                    // Determine which kanji/kana apply to this sense
+                    val kanji = if (sense.appliesToKanji.contains("*")) {
+                        word.kanji.map { it.text }
+                    } else {
+                        sense.appliesToKanji.mapNotNull { id ->
+                            kanjiMap.getValue(id.code).text
+                        }
+                    }
+                    relevantKanji.addAll(kanji)
+
+                    val kana = if (sense.appliesToKana.contains("*")) {
+                        word.kana.map { it.text }
+                    } else {
+                        sense.appliesToKana.mapNotNull { id ->
+                            kanaMap.getValue(id.code).text
+                        }
+                    }
+                    relevantKana.addAll(kana)
+                } catch (e: Throwable) {
+                    logger.ERROR(e.toString())
+                }
+                val glossText = glosses.joinToString(", ")
+                val example = exampleTextBySenseId[sense.senseId]?.let {
+                    "e.g., $it"
+                } ?: ""
+                val combinedText = "$glossText $example"
+                val placeholderScore = 1337f
+                val ranked = RankedSense(
+                    wordId = word.word.id,
+                    senseId = sense.senseId!!,
+                    score = placeholderScore,
+                    kanjiTexts = relevantKanji,
+                    kanaTexts = relevantKana,
+                    glossTexts = glosses,
+                    partOfSpeech = json.decodeFromString<List<String>>(sense.partOfSpeech)
+                )
+                rankedContextBags.add(RankedContextBag(ranked, localContext, glossText))
+            }
+        }
+        var maxLen = Int.MIN_VALUE
+        val inputIdsList = mutableListOf<LongArray>()
+        val attentionMaskList = mutableListOf<LongArray>()
+        rankedContextBags.forEach { (ranked, context, gloss) ->
+            logger.DEBUG(gloss)
+            val encoded = TransformerManager.tokenizePair(context, gloss)
+            maxLen = max(encoded.ids.size, maxLen)
+            inputIdsList.add(encoded.ids)
+            attentionMaskList.add(encoded.attentionMask)
+        }
+
+        inputIdsList.indices.forEach { idx ->
+            inputIdsList[idx] = padSequence(inputIdsList[idx], maxLen)
+        }
+        attentionMaskList.indices.forEach { idx ->
+            attentionMaskList[idx] = padSequence(attentionMaskList[idx], maxLen)
+        }
+        println("${inputIdsList.size}, ${inputIdsList[0].size}")
+        val flattenedIds = flat2DArray(inputIdsList.toTypedArray())
+        val flattenedMasks = flat2DArray(attentionMaskList.toTypedArray())
+        val result =
+            TransformerManager.rankPairs(flattenedIds, flattenedMasks, inputIdsList.size.toLong())
+        val activated = softmax(result.toList())
+        val ranked = mutableListOf<RankedSense>()
+        logger.DEBUG("Activated : ${activated.size} - rankedContextBag : ${rankedContextBags.size}")
+        rankedContextBags.forEach { it ->
+            logger.DEBUG("${it.context} - ${it.gloss}")
+        }
+        activated.forEachIndexed { index, score ->
+            val temp = rankedContextBags[index].ranked
+            ranked.add(
+                RankedSense(
+                    wordId = temp.wordId,
+                    senseId = temp.senseId,
+                    score = score,
+                    kanjiTexts = temp.kanjiTexts,
+                    kanaTexts = temp.kanaTexts,
+                    glossTexts = temp.glossTexts,
+                    partOfSpeech = temp.partOfSpeech
+                )
+            )
+        }
+        val output = ranked.sortedByDescending { it.score }
+        output.forEach { logger.DEBUG("${it.glossTexts} ${it.kanjiTexts} ${it.kanaTexts} ${it.score} ${it.partOfSpeech}") }
+        return output
+    }
+
     fun rankDictionaryEntries(
         entries: List<WordFull>,
+        localContextEmbedding: FloatArray?,
         sentenceEmbedding: FloatArray,
         mappedPOS: List<String>
-    ): List<Pair<TokenInfo, String>> {
+    ): List<RankedSense> {
         if (entries.isEmpty()) {
             println("No dictionary entries found")
             return emptyList()
@@ -59,10 +353,14 @@ object TokenHelper {
             }
         }
 
+        println("ALL ENTRIES DICT LOOKUP RESULT")
+        entries.forEach {
+            println(it)
+        }
         // 2. Deduplicate by wordId
-        val unique = posMatched.distinctBy { it.word.id }
+//        val unique = posMatched.distinctBy { it.word.id }
         val results = mutableListOf<RankedSense>()
-        for (word in unique) {
+        for (word in posMatched) {
             val kanjiMap = word.kanji.associateBy { it.kanjiId }
             val kanaMap = word.kana.associateBy { it.kanaId }
             val relevantKanji = mutableListOf<String>()
@@ -70,6 +368,8 @@ object TokenHelper {
             for (senseWithGloss in word.senses) {
                 val sense = senseWithGloss.sense
                 val glosses = senseWithGloss.glosses.map { it.text }
+                val examples = senseWithGloss.examples
+                logger.DEBUG(examples.joinToString(","))
                 try {
                     // Determine which kanji/kana apply to this sense
                     val kanji = if (sense.appliesToKanji.contains("*")) {
@@ -93,22 +393,39 @@ object TokenHelper {
                     logger.ERROR(e.toString())
                 }
 
-                // Collect all texts to embed
-                val textsToEmbed = (relevantKanji + relevantKana + glosses).distinct()
+                val glossText = glosses.joinToString(", ")
 
-                // Get max similarity from any of those
-                var maxScore = -1.0f
-                for (text in textsToEmbed) {
-                    val vec = TransformerManager.getEmbeddings(text)
-                    val score = cosineSimilarity(sentenceEmbedding.toList(), vec.toList())
-                    if (score > maxScore) maxScore = score
+// Check if info is available and not empty
+                val infoTexts = json.decodeFromString<List<String>>(sense.info)
+                val infoText = if (infoTexts.isNotEmpty()) {
+                    " (${infoTexts.joinToString(",")})"
+                } else {
+                    ""
                 }
 
+                val contextualGloss = glossText + infoText
+                val canonicalGloss = glossText.substringBefore("(").trim()
+//                logger.DEBUG("Contextual gloss : $contextualGloss")
+                val contextualEmbedding = TransformerManager.getEmbeddings(canonicalGloss)
+                logger.DEBUG("Contextual embedding size ${contextualEmbedding.size}")
+                val score = cosineSimilarity(sentenceEmbedding, contextualEmbedding)
+                var finalScore = score
+//                -0.37447652
+//                -0.048565257
+//                0.7874593
+//                0.11824332
+                if (localContextEmbedding != null) {
+                    val localScore = cosineSimilarity(localContextEmbedding, contextualEmbedding)
+                    finalScore = 0.3f * score + 0.7f * localScore
+                }
+                logger.DEBUG("contextualGloss $contextualGloss")
+//                logger.DEBUG("contextualGloss embedding: ${contextualEmbedding.joinToString(",")}")
+                logger.DEBUG("PER SENSE SCORE $finalScore")
                 results.add(
                     RankedSense(
                         wordId = word.word.id,
                         senseId = sense.senseId!!,
-                        score = maxScore,
+                        score = finalScore,
                         kanjiTexts = relevantKanji,
                         kanaTexts = relevantKana,
                         glossTexts = glosses,
@@ -117,8 +434,8 @@ object TokenHelper {
                 )
             }
         }
-
-        logger.DEBUG(results.joinToString(","))
+        val sorted = results.sortedByDescending { it.score }
+        logger.DEBUG(sorted.joinToString(","))
 // Sort by score descending and take top 3 (or more if needed)
 //        val top = scored.sortedByDescending { it.third }.take(3)
 //        logger.DEBUG(top.toString())
@@ -177,10 +494,14 @@ object TokenHelper {
 //                "$meaning (cosine similarity: ${"%.2f".format(it.second)})"
 //            )
 //        }
-        return emptyList()
+        return sorted
     }
 
-    fun mergeWithDictionary(tokens: List<TokenInfo>, dict: Set<String>?, maxGram: Int = 6): List<TokenInfo> {
+    fun mergeWithDictionary(
+        tokens: List<TokenInfo>,
+        dict: Set<String>?,
+        maxGram: Int = 6
+    ): List<TokenInfo> {
         // Add before merging
         val filteredTokens = tokens.map {
             if (it.surface in setOf("!", "?", "！", "？", "。", "、")) {
