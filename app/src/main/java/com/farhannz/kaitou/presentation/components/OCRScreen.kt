@@ -7,7 +7,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.provider.MediaStore
-import android.util.Log
 import android.widget.Toast
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
@@ -43,11 +42,10 @@ import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.MainApplication
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.domain.OcrResult
-import com.farhannz.kaitou.helpers.BoundaryViterbi
-import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.InflectionRules
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.helpers.TokenHelper
+import com.farhannz.kaitou.helpers.TransformerManager
+import com.farhannz.kaitou.impl.JMDict
 import com.farhannz.kaitou.presentation.utils.toCurrentImpl
 import com.farhannz.kaitou.presentation.utils.toRawImage
 import kotlinx.coroutines.Dispatchers
@@ -93,7 +91,7 @@ fun tokenizeWithPOS(text: String): List<TokenInfo> {
         )
     }
 
-    Log.d("TokenizeWithPOS", result.joinToString("\n"))
+//    Log.d("TokenizeWithPOS", result.joinToString("\n"))
     tokenizer.end()
     tokenizer.close()
 
@@ -269,12 +267,13 @@ fun WordPolygonsOverlay(
                                 offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
                                         offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
                             }
-                            if (tappedIndex.intValue != -1) {
+                            if (tappedIndex.intValue != -1 && !showPopup) {
                                 selectedIndices.clear()
                                 logger.DEBUG("$offset - $tappedIndex")
                                 selectedIndices.addAll(grouped.grouped[tappedIndex.intValue].second)
                                 showPopup = true
                             } else {
+                                selectedIndices.clear()
                                 if (!showPopup) onClicked()
                                 else showPopup = false
                             }
@@ -293,11 +292,13 @@ fun WordPolygonsOverlay(
                         ) {
                             var merged by remember { mutableStateOf<List<TokenInfo>?>(null) }
                             var selectedWord by remember { mutableStateOf("") }
+                            var selectedEmbedding by remember { mutableStateOf(FloatArray(128)) }
 
                             LaunchedEffect(selectedIndices.joinToString("")) {
                                 merged = null // reset before loading
                                 withContext(Dispatchers.Default) {
-                                    val engine = (context.applicationContext as MainApplication).textRecognizer
+                                    val engine =
+                                        (context.applicationContext as MainApplication).textRecognizer
                                     //                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
                                     //                                selectedWord = texts.joinToString("")
                                     val raw = originalImage.toRawImage()
@@ -309,9 +310,13 @@ fun WordPolygonsOverlay(
                                     selectedWord =
                                         engine.recognize(raw, domainBoxes, selectedIndices)
                                             .joinToString("") { it.text }
-
+//                                    selectedEmbedding =
+//                                        TransformerManager.getEmbeddings(selectedWord)
+                                    logger.DEBUG(selectedWord)
+//                                    logger.DEBUG("Embedding : ${selectedEmbedding.joinToString(",")}")
                                     // TODO(Move tokenize to impl?)
                                     val tokens = tokenizeWithPOS(selectedWord)
+                                    logger.DEBUG("Raw Tokens : ${tokens.size}")
                                     //                                logger.DEBUG(selectedWord)
                                     //                                val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {
                                     //                                    TokenHelper.correctAuxiliaryNegative(it)
@@ -319,6 +324,8 @@ fun WordPolygonsOverlay(
                                     //                                val result = BoundaryViterbi.segment(tokens, DatabaseManager.getCache()!!)
                                     //                                logger.DEBUG(result.joinToString("\n"))
 //                                    val inflected = InflectionRules.matchInflection(tokens)
+//                                    logger.DEBUG("After Inflected : ${inflected.size}")
+                                    JMDict.clearCache()
                                     merged = tokens
                                 }
                             }
@@ -333,7 +340,11 @@ fun WordPolygonsOverlay(
                                     CircularProgressIndicator()
                                 }
                             } else {
-                                BottomSheetContent(merged!!, selectedWord) {
+                                BottomSheetContent(
+                                    merged = merged!!,
+                                    selectedWord = selectedWord,
+                                    selectedEmbedding = selectedEmbedding
+                                ) {
                                     showPopup = false
                                 }
                             }
@@ -445,12 +456,17 @@ fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
         }
 
         is OCRUIState.Failed -> {
-            Toast.makeText(LocalContext.current, "Failed while processing OCR", Toast.LENGTH_SHORT).show()
+            Toast.makeText(LocalContext.current, "Failed while processing OCR", Toast.LENGTH_SHORT)
+                .show()
             onClicked()
         }
 
         is OCRUIState.NoDetections -> {
-            Toast.makeText(LocalContext.current, "No texts detected, try zooming the image", Toast.LENGTH_SHORT).show()
+            Toast.makeText(
+                LocalContext.current,
+                "No texts detected, try zooming the image",
+                Toast.LENGTH_SHORT
+            ).show()
             onClicked()
         }
 

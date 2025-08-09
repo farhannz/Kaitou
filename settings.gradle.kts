@@ -20,5 +20,5 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "Kaitou"
-include(":app", ":opencv")
+include(":app")
 //project(":opencv").projectDir = file("third-party/OpenCV-android-sdk/sdk")

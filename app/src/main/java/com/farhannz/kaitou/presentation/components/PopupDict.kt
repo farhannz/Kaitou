@@ -1,13 +1,10 @@
 package com.farhannz.kaitou.presentation.components
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -19,19 +16,18 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.domain.LookupResult
 import com.farhannz.kaitou.domain.MorphemeData
-import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.posMapping
 import com.farhannz.kaitou.impl.JMDict
 import com.farhannz.kaitou.presentation.ocr.MorphemeCard
 import com.farhannz.kaitou.presentation.ocr.StickyHeader
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 
 //@Composable
@@ -44,6 +40,7 @@ import com.farhannz.kaitou.presentation.ocr.StickyHeader
 fun BottomSheetContent(
     merged: List<TokenInfo>,
     selectedWord: String,
+    selectedEmbedding: FloatArray,
     onDismiss: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
@@ -51,25 +48,29 @@ fun BottomSheetContent(
     val maxHeight = screenHeight * 2 / 3
     val useDarkTheme = isSystemInDarkTheme()
     val colors =
-        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(LocalContext.current)
+        if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(
+            LocalContext.current
+        )
+
     MaterialTheme(colorScheme = colors) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .heightIn(max = maxHeight)
+                .background(MaterialTheme.colorScheme.surface)
         ) {
             StickyHeader(
                 title = selectedWord,
                 onDismiss = onDismiss
             )
             logger.DEBUG("Merged size ${merged.size}")
-            MorphemeBreakdownCard(merged)
+            MorphemeBreakdownCard(merged, selectedEmbedding)
         }
     }
 }
 
 @Composable
-fun MorphemeBreakdownCard(merged: List<TokenInfo>) {
+fun MorphemeBreakdownCard(merged: List<TokenInfo>, selectedEmbedding: FloatArray) {
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -77,17 +78,22 @@ fun MorphemeBreakdownCard(merged: List<TokenInfo>) {
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(merged.size) { idx ->
-            MorphemeItemCard(merged[idx])
+            MorphemeItemCard(idx, merged, selectedEmbedding)
         }
     }
 }
 
 @Composable
-fun MorphemeItemCard(token: TokenInfo) {
+fun MorphemeItemCard(
+    tokenIdx: Int,
+    sentenceTokens: List<TokenInfo>,
+    selectedEmbedding: FloatArray
+) {
+    val token = sentenceTokens[tokenIdx]
     var state by remember(token) { mutableStateOf<LookupState>(LookupState.LookingUp) }
 
     LaunchedEffect(token) {
-        val result = JMDict.lookup(token)
+        val result = JMDict.lookup(tokenIdx, sentenceTokens, selectedEmbedding)
         when (result) {
             is LookupResult.Success -> {
                 state = LookupState.Done(result)
@@ -95,6 +101,11 @@ fun MorphemeItemCard(token: TokenInfo) {
 
             is LookupResult.Error -> {
                 state = LookupState.NotFound
+            }
+
+            is LookupResult.Skipped -> {
+                logger.INFO(result.message)
+                state = LookupState.Skipped
             }
         }
     }
@@ -111,6 +122,10 @@ fun MorphemeItemCard(token: TokenInfo) {
             }
         }
 
+        is LookupState.Skipped -> {
+//            Do nothing
+        }
+
         is LookupState.Done -> {
             val entry = s.result.morphemeData
             logger.DEBUG(entry.toString())
@@ -120,10 +135,18 @@ fun MorphemeItemCard(token: TokenInfo) {
         }
 
         is LookupState.NotFound -> {
+            val meaning = if (token.metadata.containsKey("merged_meaning")) {
+                token.metadata["merged_meaning"] as String
+            } else {
+                ""
+            }
+            val reading = token.reading.ifEmpty {
+                ""
+            }
             val entry = MorphemeData(
-                token.surface,
-                "",
-                "",
+                token.baseForm ?: token.surface,
+                reading,
+                meaning,
                 posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
             )
             MorphemeCard(
@@ -185,6 +208,7 @@ fun MorphemeItem(
 
 sealed class LookupState {
     object LookingUp : LookupState()
+    object Skipped : LookupState()
     data class Done(val result: LookupResult.Success) : LookupState()
     object NotFound : LookupState()
 }

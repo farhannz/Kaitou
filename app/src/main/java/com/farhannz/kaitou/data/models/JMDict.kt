@@ -12,6 +12,7 @@ import androidx.room.PrimaryKey
 import androidx.room.Relation
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.posMapping
+import kotlinx.serialization.Serializable
 
 
 @Entity(tableName = "dictionary_info")
@@ -33,9 +34,10 @@ data class Tag(
 )
 
 // Word.kt
-@Entity(tableName = "words",
+@Entity(
+    tableName = "words",
     indices = [Index(value = ["id"], name = "idx_words_id")]
-    )
+)
 data class Word(
     @PrimaryKey val id: String
 )
@@ -43,7 +45,12 @@ data class Word(
 // Kanji.kt
 @Entity(
     tableName = "kanji",
-    foreignKeys = [ForeignKey(entity = Word::class, parentColumns = ["id"], childColumns = ["word_id"], onDelete = CASCADE)],
+    foreignKeys = [ForeignKey(
+        entity = Word::class,
+        parentColumns = ["id"],
+        childColumns = ["word_id"],
+        onDelete = CASCADE
+    )],
     indices = [Index(value = ["word_id"], name = "idx_kanji_word_id")]
 )
 data class Kanji(
@@ -58,7 +65,12 @@ data class Kanji(
 // Kana.kt
 @Entity(
     tableName = "kana",
-    foreignKeys = [ForeignKey(entity = Word::class, parentColumns = ["id"], childColumns = ["word_id"], onDelete = CASCADE)],
+    foreignKeys = [ForeignKey(
+        entity = Word::class,
+        parentColumns = ["id"],
+        childColumns = ["word_id"],
+        onDelete = CASCADE
+    )],
     indices = [Index(value = ["word_id"], name = "idx_kana_word_id")]
 )
 data class Kana(
@@ -74,12 +86,18 @@ data class Kana(
 // Sense.kt
 @Entity(
     tableName = "sense",
-    foreignKeys = [ForeignKey(entity = Word::class, parentColumns = ["id"], childColumns = ["word_id"], onDelete = CASCADE)],
+    foreignKeys = [ForeignKey(
+        entity = Word::class,
+        parentColumns = ["id"],
+        childColumns = ["word_id"],
+        onDelete = CASCADE
+    )],
     indices = [Index(value = ["word_id"], name = "idx_sense_word_id")]
 )
+@Serializable
 data class Sense(
     @PrimaryKey(autoGenerate = true)
-    @ColumnInfo(name = "sense_id")val senseId: Int? = 0,
+    @ColumnInfo(name = "sense_id") val senseId: Int? = 0,
     @ColumnInfo(name = "word_id") val wordId: String,
     @ColumnInfo(name = "part_of_speech") val partOfSpeech: String,
     @ColumnInfo(name = "applies_to_kanji") val appliesToKanji: String,
@@ -126,8 +144,62 @@ data class SenseWithGlosses(
         parentColumn = "sense_id",
         entityColumn = "sense_id"
     )
-    val glosses: List<Gloss>
+    val glosses: List<Gloss>,
+
+    @Relation(
+        parentColumn = "sense_id",
+        entityColumn = "sense_id",
+        entity = Example::class
+    )
+    val examples: List<ExampleWithSentences>
 )
+
+data class ExampleWithSentences(
+    @Embedded val example: Example,
+
+    @Relation(
+        parentColumn = "example_id",
+        entityColumn = "example_id"
+    )
+    val sentences: List<ExampleSentence>
+)
+
+@Entity(
+    tableName = "examples",
+    foreignKeys = [ForeignKey(
+        entity = Sense::class,
+        parentColumns = ["sense_id"],
+        childColumns = ["sense_id"],
+        onDelete = CASCADE
+    )],
+    indices = [Index(value = ["sense_id"], name = "idx_examples_sense_id")]
+)
+data class Example(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "example_id") val exampleId: Int? = 0,
+    @ColumnInfo(name = "sense_id") val senseId: Int,
+    @ColumnInfo(name = "source_type") val sourceType: String?,
+    @ColumnInfo(name = "source_value") val sourceValue: String?
+)
+
+@Entity(
+    tableName = "example_sentences",
+    foreignKeys = [ForeignKey(
+        entity = Example::class,
+        parentColumns = ["example_id"],
+        childColumns = ["example_id"],
+        onDelete = CASCADE
+    )],
+    indices = [Index(value = ["example_id"], name = "idx_example_sentences_example_id")]
+)
+data class ExampleSentence(
+    @PrimaryKey(autoGenerate = true)
+    @ColumnInfo(name = "sentence_id") val sentenceId: Int? = 0,
+    @ColumnInfo(name = "example_id") val exampleId: Int,
+    val language: String,
+    val text: String
+)
+
 
 data class WordFull(
 
@@ -155,10 +227,12 @@ data class WordFull(
     fun String.containsAny(posList: List<String>): Boolean {
         return posList.any { this.contains(it) }
     }
+
     fun getMostLikelyKana(token: TokenInfo): String? {
         return kana.firstOrNull { it.text == token.surface }?.text
             ?: kana.firstOrNull()?.text
     }
+
     fun getMostLikelyMeaning(token: TokenInfo): String? {
 
         val kuromojiPOS = token.partOfSpeech.substringBefore("-")
@@ -197,7 +271,10 @@ data class WordFull(
     }
 
     @Deprecated("The usage of getting the most likely meaning and part of speech only from string is deprecated due to bad meaning and pos result")
-    fun getMostLikelyMeaningsWithPOS(tokenPOS: String? = null, limit: Int = 3): List<Pair<String, String>> {
+    fun getMostLikelyMeaningsWithPOS(
+        tokenPOS: String? = null,
+        limit: Int = 3
+    ): List<Pair<String, String>> {
         val prioritized = senses.sortedBy { if ("uk" in it.sense.misc) 2 else 0 }
 
         return prioritized

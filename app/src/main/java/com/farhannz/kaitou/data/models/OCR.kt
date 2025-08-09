@@ -36,7 +36,13 @@ data class TokenInfo(
     val inflectionType: String = "",
     val inflectionForm: String = "",
     val metadata: Map<String, Any> = emptyMap()
-)
+) {
+    fun katakanaToHiragana(katakana: String): String {
+        return katakana.map { ch ->
+            if (ch in 'ァ'..'ン') (ch.code - 0x60).toChar() else ch
+        }.joinToString("")
+    }
+}
 
 sealed class OCRUIState {
     object ProcessingOCR : OCRUIState()
@@ -53,5 +59,9 @@ sealed class OCRUIState {
 //  [Point(x,y), Point(x,y), Point(x,y), Point(x,y)]
 // ]
 
-data class GroupedResult(val detections: DetectionResult, val grouped: List<Pair<List<Point>, List<Int>>>)
+data class GroupedResult(
+    val detections: DetectionResult,
+    val grouped: List<Pair<List<Point>, List<Int>>>
+)
+
 data class DetectionResult(val boxes: List<List<Point>>, val scores: List<Double>)
