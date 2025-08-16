@@ -79,12 +79,12 @@ val posMapping: Map<String, List<String>> = mapOf(
     "名詞-助数詞" to listOf("ctr"),
 
     // Suffix nouns
-    "名詞-接尾-一般" to listOf("n-suf", "n", "suf"),
-    "名詞-接尾-人名" to listOf("n-suf", "n", "suf", "n-pr", "given", "surname"),
-    "名詞-接尾-地名" to listOf("n-suf", "n", "suf", "n-pr", "place"),
-    "名詞-接尾-副詞可能" to listOf("n-suf", "n", "suf", "adv"),
-    "名詞-接尾-助数詞" to listOf("n-suf", "n", "suf", "ctr"),
-    "名詞-接尾-サ変可能" to listOf("n-suf", "n", "suf", "vs"),
+    "名詞-接尾-一般" to listOf("n-suf", "suf"),
+    "名詞-接尾-人名" to listOf("n-suf", "suf", "n-pr", "given", "surname"),
+    "名詞-接尾-地名" to listOf("n-suf", "suf", "n-pr", "place"),
+    "名詞-接尾-副詞可能" to listOf("n-suf", "suf", "adv"),
+    "名詞-接尾-助数詞" to listOf("n-suf", "suf", "ctr"),
+    "名詞-接尾-サ変可能" to listOf("n-suf", "suf", "vs"),
     "名詞-接尾-助動詞語幹" to listOf("adj-na", "aux"),
 
     // Verbs
