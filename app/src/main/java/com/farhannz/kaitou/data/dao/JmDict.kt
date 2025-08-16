@@ -11,9 +11,11 @@ import androidx.room.Transaction
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.helpers.TransformerManager
+import com.farhannz.kaitou.helpers.baseIs
 import com.farhannz.kaitou.helpers.katakanaToHiragana
 import com.farhannz.kaitou.helpers.mapPosToJmdict
 import com.farhannz.kaitou.helpers.posMapping
+import com.farhannz.kaitou.helpers.surfaceIs
 import kotlinx.serialization.json.Json
 
 @Dao
@@ -136,7 +138,17 @@ interface DictionaryDao {
         tokenIdx: Int,
         sentenceTokens: List<TokenInfo>
     ): List<WordFull> {
-        val token = sentenceTokens[tokenIdx]
+//        val token = sentenceTokens[tokenIdx]
+        val rawToken = sentenceTokens[tokenIdx]
+        // Patch kuromoji token because it shows godan su verb + potential as an ichidan verb
+        // e.g., 許せる, 書ける
+        val patchedBaseForm =
+            TokenHelper.patchPotentialGodan(rawToken.baseForm!!, rawToken.inflectionType)
+        val isPotential = patchedBaseForm != rawToken.baseForm
+        val token = rawToken.copy(
+            baseForm = patchedBaseForm,
+            metadata = mapOf("isPotential" to isPotential)
+        )
         val json = Json { ignoreUnknownKeys = true }
         val surface = token.surface
         val base = token.baseForm.orEmpty()

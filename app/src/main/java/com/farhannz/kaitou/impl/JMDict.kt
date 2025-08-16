@@ -176,17 +176,13 @@ object JMDict : DBDictionary {
         val token = sentenceTokens[tokenIdx]
         logger.DEBUG(token.toString())
 
-        val skipPOS = listOf("助詞-接続助詞", "助動詞", "記号", "名詞-非自立-一般")
-        if (skipPOS.any { token.partOfSpeech.startsWith(it) }) {
-            return LookupResult.Skipped("${token.surface} Skipped due to pos - ${token.partOfSpeech} ")
-        }
         if (isCoordinatingParticle(token)) {
             return LookupResult.Success(
                 MorphemeData(
                     token.baseForm!!,
                     token.reading,
                     coordinatingParticles[token.surface]!!,
-                    "coordinating particle"
+                    "coord prt"
                 )
             )
         } else if (isSentenceFinalParticle(token)) {
@@ -195,9 +191,13 @@ object JMDict : DBDictionary {
                     token.baseForm!!,
                     token.reading,
                     sentenceFinalParticles[token.surface]!!,
-                    "sentence final particle"
+                    "final prt"
                 )
             )
+        }
+        val skipPOS = listOf("助詞", "助詞-接続助詞", "助動詞", "記号", "名詞-非自立-一般")
+        if (skipPOS.any { token.partOfSpeech.startsWith(it) }) {
+            return LookupResult.Skipped("${token.surface} Skipped due to pos - ${token.partOfSpeech} ")
         }
         val dao = DatabaseManager.getDatabase().dictionaryDao()
         val result = if (lookupCache.containsKey(token)) {
@@ -224,6 +224,13 @@ object JMDict : DBDictionary {
             extractLocalContextPhrase(tokenIdx, sentenceTokens, localContextWindow)
         val ranked =
             TokenHelper.rerankGlosses(result, sentenceTokens.joinToString("") { it.surface })
+//                .filter { rankedItem ->
+//                    rankedItem.partOfSpeech.any { rankedPos ->
+//                        targetPos.any { targetPos ->
+//                            targetPos.contains(rankedPos)
+//                        }
+//                    }
+//                }
         /*
         //        THESE WERE USED USING SENTENCE EMBEDDING
         //        val localContextEmbedding: FloatArray? = localContextPhrase?.let {
@@ -242,18 +249,45 @@ object JMDict : DBDictionary {
         val reading = kanaLine.text
         val bestSense = ranked.first()
 
+//        Check if the verb is godan + potential
+        val godanPotentialSuffixes =
+            listOf("ける", "げる", "てる", "でる", "べる", "める", "れる", "せる")
+
+        val isPotential = token.inflectionType == "一段" &&
+                godanPotentialSuffixes.any { token.baseForm!!.endsWith(it) }
+
         val meaning = if (token.metadata.containsKey("merged_meaning")) {
             token.metadata["merged_meaning"] as String
         } else {
-            bestSense.glossTexts.take(3).joinToString(",")
+            bestSense.glossTexts.take(3).joinToString(", ") { gloss ->
+                if (isPotential) {
+                    gloss.replace(Regex("^to\\s+(.+)$"), "to be able to $1")
+                } else {
+                    gloss
+                }
+            }
         }
+
+
         val displayPos = bestSense.partOfSpeech.joinToString(",")
         return LookupResult.Success(
             MorphemeData(
                 dictForm,
                 reading,
                 meaning,
-                displayPos
+                displayPos,
+                confidence = bestSense.score,
+                alternatives = if (ranked.size > 1) {
+                    ranked.subList(1, ranked.size - 1).map {
+                        it.glossTexts.take(3).joinToString(", ") { gloss ->
+                            if (isPotential) {
+                                gloss.replace(Regex("^to\\s+(.+)$"), "to be able to $1")
+                            } else {
+                                gloss
+                            }
+                        }
+                    }
+                } else emptyList()
             )
         )
     }
