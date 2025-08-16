@@ -123,6 +123,33 @@ object TokenHelper {
         return localTokens.joinToString("") { it.surface }
     }
 
+
+    fun patchPotentialGodan(baseForm: String, inflectionType: String): String {
+        val godanPotentialSuffixes =
+            listOf("ける", "げる", "てる", "でる", "べる", "める", "れる", "せる")
+
+        val isPotential = inflectionType == "一段" &&
+                godanPotentialSuffixes.any { baseForm.endsWith(it) }
+        // Kuromoji marks potential forms of godan -su verbs as 一段 verbs ending in "せる"
+        val patchedBase = if (isPotential) {
+            // Replace potential ending with godan dictionary ending
+            when {
+                baseForm.endsWith("せる") -> baseForm.dropLast(2) + "す"
+                baseForm.endsWith("ける") -> baseForm.dropLast(2) + "く"
+                baseForm.endsWith("げる") -> baseForm.dropLast(2) + "ぐ"
+                baseForm.endsWith("てる") -> baseForm.dropLast(2) + "つ"
+                baseForm.endsWith("でる") -> baseForm.dropLast(2) + "づ"
+                baseForm.endsWith("べる") -> baseForm.dropLast(2) + "ぶ"
+                baseForm.endsWith("める") -> baseForm.dropLast(2) + "む"
+                baseForm.endsWith("れる") -> baseForm.dropLast(2) + "る"
+                else -> baseForm
+            }
+        } else {
+            baseForm
+        }
+        return patchedBase
+    }
+
     fun getBaseReadingFromInflected(token: TokenInfo): String {
         val inflected = katakanaToHiragana(token.reading)
 
@@ -243,9 +270,11 @@ object TokenHelper {
                 val examples = senseWithGloss.examples
                 val exampleTextBySenseId: Map<Int, String> = examples.associateBy(
                     { it.example.senseId },
-                    { it.sentences.firstOrNull()?.text ?: "" }
+                    {
+                        it.sentences.firstOrNull { sentence -> sentence.language == "jpn" }?.text
+                            ?: ""
+                    }
                 )
-
                 try {
                     // Determine which kanji/kana apply to this sense
                     val kanji = if (sense.appliesToKanji.contains("*")) {
@@ -268,11 +297,12 @@ object TokenHelper {
                 } catch (e: Throwable) {
                     logger.ERROR(e.toString())
                 }
-                val glossText = glosses.joinToString(", ")
+                val glossText = glosses.take(3).joinToString(", ")
                 val example = exampleTextBySenseId[sense.senseId]?.let {
                     "e.g., $it"
                 } ?: ""
                 val combinedText = "$glossText $example"
+                logger.DEBUG(combinedText)
                 val placeholderScore = 1337f
                 val ranked = RankedSense(
                     wordId = word.word.id,
@@ -308,14 +338,19 @@ object TokenHelper {
         val flattenedMasks = flat2DArray(attentionMaskList.toTypedArray())
         val result =
             TransformerManager.rankPairs(flattenedIds, flattenedMasks, inputIdsList.size.toLong())
-        val activated = softmax(result.toList())
+
+        val contextLogitPair =
+            rankedContextBags.zip(result.toList()).sortedByDescending { it.second }
+
+        val topNScores = contextLogitPair.map { it.second }
+        val activated = softmax(topNScores)
         val ranked = mutableListOf<RankedSense>()
         logger.DEBUG("Activated : ${activated.size} - rankedContextBag : ${rankedContextBags.size}")
         rankedContextBags.forEach { it ->
             logger.DEBUG("${it.context} - ${it.gloss}")
         }
         activated.forEachIndexed { index, score ->
-            val temp = rankedContextBags[index].ranked
+            val temp = contextLogitPair[index].first.ranked
             ranked.add(
                 RankedSense(
                     wordId = temp.wordId,

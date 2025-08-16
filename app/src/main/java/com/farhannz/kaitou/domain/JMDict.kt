@@ -20,5 +20,7 @@ data class MorphemeData(
     val text: String,
     val reading: String,
     val meaning: String,
-    val type: String
+    val type: String,
+    val confidence: Float = 1.0f,
+    val alternatives: List<String> = emptyList()
 )
