@@ -5,6 +5,7 @@ import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.farhannz.kaitou.domain.InferenceResult
 import com.farhannz.kaitou.domain.ModelInput
+import com.farhannz.kaitou.helpers.Logger
 import java.nio.FloatBuffer
 import java.nio.IntBuffer
 import java.nio.LongBuffer
@@ -22,12 +23,23 @@ class OnnxModel(private val modelPath: String, private val useSentenceEmbedding:
         try {
             env = OrtEnvironment.getEnvironment()
             val sessionOptions = OrtSession.SessionOptions()
+            val qnnOptions = mutableMapOf<String, String>()
+            qnnOptions["backend_tye"] = "htp"
+            val logger = Logger(OnnxModel::class.simpleName!!)
             try {
-                sessionOptions.addNnapi()
+                sessionOptions.addQnn(qnnOptions)
+                logger.INFO("ONNX QNN is used")
             } catch (e: Throwable) {
-                println("Warning NNAPI isn't available, fallingback to CPU Only, ${e.message}")
+                logger.WARNING("ONNX QNN NPU not available, trying NNAPI. Error: ${e.message}")
+                try {
+                    sessionOptions.addNnapi()
+                } catch (e2: Throwable) {
+                    logger.WARNING("ONNX NNAPI fallback failed. Using CPU.")
+                }
             }
+
             session = env!!.createSession(modelPath, sessionOptions)
+
         } catch (e: Exception) {
             throw RuntimeException("Failed to load model: $modelPath", e)
         }
