@@ -45,7 +45,12 @@ android {
         getByName("release") {
             isMinifyEnabled = true
             isShrinkResources = true
-            setProguardFiles(listOf(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro"))
+            setProguardFiles(
+                listOf(
+                    getDefaultProguardFile("proguard-android-optimize.txt"),
+                    "proguard-rules.pro"
+                )
+            )
             signingConfig = signingConfigs.getByName("release")
         }
     }
@@ -73,6 +78,7 @@ android {
 }
 
 dependencies {
+    implementation("androidx.test.ext:junit-ktx:1.2.1")
     val room = "2.7.2"
     val composeBom = platform("androidx.compose:compose-bom:2025.05.00")
 
@@ -98,10 +104,21 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     implementation("org.apache.lucene:lucene-analyzers-kuromoji:8.11.0")
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.22.0")
+    implementation("ai.djl.huggingface:tokenizers:0.33.0") // HuggingFace tokenizers
+    //noinspection Aligned16KB
+    implementation("ai.djl.android:tokenizer-native:0.33.0")
 
     debugImplementation("androidx.compose.ui:ui-tooling:1.8.3")
-    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
+//    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 
     testImplementation("junit:junit:4.13.2")
+    testImplementation("org.xerial:sqlite-jdbc:3.42.0.0") // Use latest version
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.1")
+//    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.1:models")
+//    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.1:pipeline")
+    testImplementation("ai.djl.huggingface:tokenizers:0.33.0") // HuggingFace tokenizers
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.22.0")
+    testImplementation(kotlin("test"))
 }

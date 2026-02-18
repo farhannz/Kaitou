@@ -19,6 +19,10 @@ fun baseIs(base: String): (TokenInfo) -> Boolean = {
     it.baseForm == base
 }
 
+fun surfaceIs(surface: String): (TokenInfo) -> Boolean = {
+    it.surface == surface
+}
+
 fun inflTypeIs(type: String): (TokenInfo) -> Boolean = {
     it.inflectionType == type
 }
@@ -27,13 +31,31 @@ fun inflFormIs(form: String): (TokenInfo) -> Boolean = {
     it.inflectionForm == form
 }
 
+fun posIs(pos: String): (TokenInfo) -> Boolean = {
+    it.partOfSpeech == pos
+}
+
 infix fun ((TokenInfo) -> Boolean).and(other: (TokenInfo) -> Boolean): (TokenInfo) -> Boolean = {
     this(it) && other(it)
 }
 
+infix fun ((TokenInfo) -> Boolean).or(other: (TokenInfo) -> Boolean): (TokenInfo) -> Boolean = {
+    this(it) || other(it)
+}
+
 
 object InflectionRules {
-    private val inflectionRules = listOf(
+    private val unsortedInflectionRules = listOf(
+        InflectionRule(
+            pattern = listOf(
+                baseIs("いたす") and inflFormIs("連用形"),
+                baseIs("ます") and inflFormIs("未然ウ接続"),
+                baseIs("う") and posContains("助動詞")
+            ),
+            mergedBaseForm = "いたしますしょう",
+            mergedMeaning = "let's humbly do",
+            mergedPos = "複合表現"
+        ),
         InflectionRule(
             pattern = listOf(
                 baseIs("じゃ"),
@@ -257,9 +279,20 @@ object InflectionRules {
             mergedBaseForm = "ていて",
             mergedMeaning = "doing … and",
             mergedPos = "複合表現"
-        )
+        ),
+        //  いられる (potential form of いる)
+        InflectionRule(
+            pattern = listOf(
+                baseIs("いる") and inflFormIs("未然形"),
+                baseIs("られる")
+            ),
+            mergedBaseForm = "いられる",
+            mergedMeaning = "to be able to stay/be",
+            mergedPos = "複合表現"
+        ),
     )
 
+    private val inflectionRules = unsortedInflectionRules.sortedByDescending { it.pattern.size }
     fun matchInflection(tokens: List<TokenInfo>): List<TokenInfo> {
         val result = mutableListOf<TokenInfo>()
         var i = 0
@@ -281,9 +314,11 @@ object InflectionRules {
                             partOfSpeech = rule.mergedPos,
                             reading = mergedReading,
                             inflectionType = "",
-                            inflectionForm = "" // Optional
+                            inflectionForm = "",
+                            metadata = mapOf(
+                                "merged_meaning" to rule.mergedMeaning
+                            )
                         )
-
                         i += size
                         matched = true
                         break

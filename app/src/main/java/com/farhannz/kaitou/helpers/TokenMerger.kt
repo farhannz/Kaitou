@@ -27,52 +27,124 @@ fun Char.isKatakana(): Boolean {
     return this.code in 0x30A0..0x30FF
 }
 
+fun mapPosToJmdict(pos: String, inflectionType: String? = null): List<String> {
+    val posList = pos.split("-")
+    val allPossibleMappings = mutableSetOf<String>()
+
+    // Try exact matches for all possible lengths
+    for (length in minOf(3, posList.size) downTo 1) {
+        val key = posList.take(length).joinToString("-")
+        posMapping[key]?.let { allPossibleMappings.addAll(it) }
+        if (allPossibleMappings.isNotEmpty()) break
+    }
+
+//    val normalized = mutableSetOf<String>()
+//    allPossibleMappings.forEach {
+//        normalized.addAll(it.split("-"))
+//    }
+//    println(posList.joinToString(","))
+//    println(normalized.joinToString(","))
+//    if (pos.startsWith("動詞") && inflectionType != null) {
+//        return when {
+//            inflectionType.startsWith("一段") -> listOf("v1")
+//            inflectionType.startsWith("五段") -> listOf("v5")
+//            inflectionType.contains("サ変") -> listOf("vs", "vs-i", "vs-s")
+//            inflectionType.contains("カ変") -> listOf("vk")
+//            else -> listOf("unc")
+//        }
+//    }
+
+    return if (allPossibleMappings.isNotEmpty()) {
+        allPossibleMappings.toList()
+    } else {
+        listOf("unc")
+    }
+}
+
 val posMapping: Map<String, List<String>> = mapOf(
-    "名詞-普通名詞-一般" to listOf("n"),
-    "名詞-普通名詞-サ変可能" to listOf("n", "vs"),
-    "名詞-普通名詞-形状詞可能" to listOf("n", "adj-na"),
-    "名詞-固有名詞-人名" to listOf("n", "n-pr", "given", "surname"),
+    "名詞-代名詞-一般" to listOf("pn"),
+    // Nouns - Common
+    "名詞-普通" to listOf("n"),
+    "名詞-一般" to listOf("n"),
+    "名詞-サ変可能" to listOf("n", "vs"),
+    "名詞-形状詞可能" to listOf("n", "adj-na"),
+    "名詞-サ変接続" to listOf("n", "vs", "vt"),
+    // Proper nouns
+    "名詞-固有名詞-人名" to listOf("n", "n-pr", "person", "given", "surname"),
     "名詞-固有名詞-地名" to listOf("n", "n-pr", "place"),
     "名詞-固有名詞-組織" to listOf("n", "n-pr", "organization"),
+
+    // Numerals and counters
     "名詞-数詞" to listOf("num"),
     "名詞-助数詞" to listOf("ctr"),
-    "名詞-接尾-一般" to listOf("n-suf"),
-    "名詞-接尾-人名" to listOf("n-suf", "n-pr", "given", "surname"),
-    "名詞-接尾-地名" to listOf("n-suf", "n-pr", "place"),
-    "名詞-接尾-副詞可能" to listOf("n-suf", "adv"),
-    "名詞-接尾-助数詞" to listOf("n-suf", "ctr"),
-    "名詞-接尾-サ変可能" to listOf("n-suf", "vs"),
-    "動詞-自立" to listOf("v1", "v5", "vk", "vs", "vi", "vt"),
+
+    // Suffix nouns
+    "名詞-接尾-一般" to listOf("n-suf", "suf"),
+    "名詞-接尾-人名" to listOf("n-suf", "suf", "n-pr", "given", "surname"),
+    "名詞-接尾-地名" to listOf("n-suf", "suf", "n-pr", "place"),
+    "名詞-接尾-副詞可能" to listOf("n-suf", "suf", "adv"),
+    "名詞-接尾-助数詞" to listOf("n-suf", "suf", "ctr"),
+    "名詞-接尾-サ変可能" to listOf("n-suf", "suf", "vs"),
+    "名詞-接尾-助動詞語幹" to listOf("adj-na", "aux"),
+
+    // Verbs
+    "動詞-自立" to listOf("v5", "v1", "vk", "vs", "vi", "vt"),
     "動詞-非自立可能" to listOf("aux-v"),
+    "動詞-非自立" to listOf("exp"),
+
+    // Adjectives
     "形容詞-自立" to listOf("adj-i", "adj-ix"),
     "形容詞-非自立可能" to listOf("aux-adj"),
+
+    // Na-adjectives
     "形状詞-一般" to listOf("adj-na"),
     "形状詞-タリ" to listOf("adj-na"),
     "形容動詞" to listOf("adj-na"),
+
+    // Adverbs
     "副詞" to listOf("adv", "adv-to"),
     "副詞-一般" to listOf("adv"),
     "副詞-助詞類接続" to listOf("adv", "adv-to"),
+
+    // Adnominal words
     "連体詞" to listOf("adj-no", "adj-pn"),
+    // Conjunctions
     "接続詞" to listOf("conj"),
+
+    // Interjections
     "感動詞" to listOf("int"),
+
+    // Particles
     "助詞-係助詞" to listOf("prt"),
     "助詞-格助詞" to listOf("prt"),
     "助詞-終助詞" to listOf("prt"),
     "助詞-副助詞" to listOf("prt"),
-    "助詞-接続助詞" to listOf("prt"),
+    "助詞-接続助詞" to listOf("prt", "conj"),
+    "助詞-連体化" to listOf("prt"),
+
+    // Auxiliary verbs/adjectives
     "助動詞" to listOf("aux-v", "aux-adj"),
+
+    // Affixes
     "接尾辞" to listOf("suf"),
     "接頭辞" to listOf("pref"),
+    "接頭詞" to listOf("pref"),
+
+    // Symbols
     "記号-一般" to listOf("sym"),
     "記号-補助記号" to listOf("sym"),
     "記号-括弧開" to listOf("sym"),
     "記号-括弧閉" to listOf("sym"),
-    "フィラー" to listOf("filler"),
-    "間投詞" to listOf("interj"),
+
+    // Other
+    "フィラー" to listOf("unc"),
+    "間投詞" to listOf("int"),
+
+    // Fallback general categories
     "名詞" to listOf("n"),
-    "動詞" to listOf("v1", "v5", "vs", "vk"),
+    "動詞" to listOf("v5", "v1", "vk", "vs"),
     "形容詞" to listOf("adj-i"),
-    "接頭詞" to listOf("pref")
+    "複合表現" to listOf("compound")
 )
 
 
@@ -190,7 +262,8 @@ object BoundaryViterbi {
                 val cost = if (surface in dict) {
                     IN_DICT_BONUS * l
                 } else {
-                    val baseform = tokens.subList(i, i + l).joinToString("") { it.baseForm.toString() }
+                    val baseform =
+                        tokens.subList(i, i + l).joinToString("") { it.baseForm.toString() }
                     if (baseform in dict) IN_DICT_BONUS * l * 0.9 else OOV_COST * l
                 }
                 dag[i + l] += Edge(i, i + l, cost)

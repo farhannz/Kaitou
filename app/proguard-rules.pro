@@ -18,6 +18,17 @@
 # Ensure all dictionary-related classes are preserved
 -keep class org.apache.lucene.analysis.ja.dict.** { *; }
 
+-keep class ai.onnxruntime.** { *; }
+-keepclassmembers class ai.onnxruntime.** {
+    native <methods>;
+}
+-keep class ai.djl.huggingface.tokenizers.** { *; }
+-keepclassmembers class ai.djl.huggingface.tokenizers.** {
+    native <methods>;
+}
+
+
+
 ## Optional: disable obfuscation/optimization if still debugging
-#-dontobfuscate
+-dontobfuscate
 #-dontoptimize

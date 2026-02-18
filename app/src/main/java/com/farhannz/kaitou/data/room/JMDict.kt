@@ -16,7 +16,9 @@ import com.farhannz.kaitou.data.dao.*
         Kanji::class,
         Kana::class,
         Sense::class,
-        Gloss::class
+        Gloss::class,
+        Example::class,
+        ExampleSentence::class
     ],
     exportSchema = false,
     version = 1
@@ -31,7 +33,7 @@ abstract class JmdictDatabase : RoomDatabase() {
                 context.applicationContext,
                 JmdictDatabase::class.java,
                 "jmdict"
-            ).createFromAsset("jmdict/jmdict_normalized.db")
+            ).createFromAsset("jmdict/jmdict_common.db")
                 .fallbackToDestructiveMigration(false)
                 .build()
         }
