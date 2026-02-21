@@ -1,7 +1,6 @@
-package com.farhannz.kaitou.impl.paddle
+package com.farhannz.kaitou.impl.utils
 
 import android.graphics.Rect
-import android.os.Environment
 import clipper2.core.Path64
 import clipper2.core.Paths64
 import clipper2.core.Point64
@@ -18,15 +17,12 @@ import org.opencv.core.MatOfPoint
 import org.opencv.core.MatOfPoint2f
 import org.opencv.core.Point
 import org.opencv.core.Scalar
-import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import org.opencv.utils.Converters
-import java.io.File
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
-
 
 // Reimplementation of PaddleX's DBPostProcess
 // https://github.com/PaddlePaddle/PaddleX/blob/30e67135ac05299cd63e0eb389ffecadad042f7f/paddlex/inference/models/text_detection/processors.py#L276
@@ -143,12 +139,12 @@ class DBPostProcess(
 
     fun process(pred: Mat, useDilation: Boolean, resizedInfo: DoubleArray): GroupedResult {
         val minMax = Core.minMaxLoc(pred)
-        logger.DEBUG("Min: ${minMax.minVal}, Max: ${minMax.maxVal}")
+//        logger.DEBUG("Min: ${minMax.minVal}, Max: ${minMax.maxVal}")
         val (srcW, srcH, scale, padX, padY) = resizedInfo
 
-        logger.DEBUG("Original size (WxH) - $srcW x $srcH")
+//        logger.DEBUG("Original size (WxH) - $srcW x $srcH")
 
-        logger.DEBUG(resizedInfo.joinToString(","))
+//        logger.DEBUG(resizedInfo.joinToString(","))
         val segmentation = Mat()
         Core.compare(pred, Scalar(thresh), segmentation, Core.CMP_GT)
         val mask = if (useDilation) {
@@ -165,7 +161,13 @@ class DBPostProcess(
 //        val file = File(Environment.getExternalStorageDirectory(), "Download/segmentation_debug.png")
 //        Imgcodecs.imwrite(file.absolutePath, mask)
         val boxes = when (boxType) {
-            "poly" -> polygonsFromBitmap(pred, mask, pred.width().toDouble(), pred.height().toDouble())
+            "poly" -> polygonsFromBitmap(
+                pred,
+                mask,
+                pred.width().toDouble(),
+                pred.height().toDouble()
+            )
+
             "quad" -> boxesFromBitmap(pred, mask, pred.width().toDouble(), pred.height().toDouble())
             else -> throw IllegalArgumentException("Invalid box type: $boxType")
         }
@@ -186,7 +188,12 @@ class DBPostProcess(
         return GroupedResult(result, emptyList())
     }
 
-    private fun polygonsFromBitmap(pred: Mat, bitmap: Mat, destWidth: Double, destHeight: Double): DetectionResult {
+    private fun polygonsFromBitmap(
+        pred: Mat,
+        bitmap: Mat,
+        destWidth: Double,
+        destHeight: Double
+    ): DetectionResult {
         val height = bitmap.rows()
         val width = bitmap.cols()
         val widthScale = destWidth / width
@@ -194,7 +201,13 @@ class DBPostProcess(
 
         val contours = mutableListOf<MatOfPoint>()
         val hierarchy = Mat()
-        Imgproc.findContours(bitmap, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
+        Imgproc.findContours(
+            bitmap,
+            contours,
+            hierarchy,
+            Imgproc.RETR_LIST,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
 
         val boxes = mutableListOf<List<Point>>()
         val scores = mutableListOf<Double>()
@@ -231,7 +244,12 @@ class DBPostProcess(
         return DetectionResult(boxes, scores)
     }
 
-    private fun boxesFromBitmap(pred: Mat, bitmap: Mat, destWidth: Double, destHeight: Double): DetectionResult {
+    private fun boxesFromBitmap(
+        pred: Mat,
+        bitmap: Mat,
+        destWidth: Double,
+        destHeight: Double
+    ): DetectionResult {
         val height = bitmap.rows()
         val width = bitmap.cols()
         val widthScale = destWidth / width
@@ -239,7 +257,13 @@ class DBPostProcess(
 
         val contours = mutableListOf<MatOfPoint>()
         val hierarchy = Mat()
-        Imgproc.findContours(bitmap, contours, hierarchy, Imgproc.RETR_LIST, Imgproc.CHAIN_APPROX_SIMPLE)
+        Imgproc.findContours(
+            bitmap,
+            contours,
+            hierarchy,
+            Imgproc.RETR_LIST,
+            Imgproc.CHAIN_APPROX_SIMPLE
+        )
 
         val boxes = mutableListOf<List<Point>>()
         val scores = mutableListOf<Double>()
@@ -248,7 +272,8 @@ class DBPostProcess(
             val (points, sside) = getMiniBoxes(contour.toArray().toList())
             if (sside < minSize) return@forEach
 
-            val score = if (scoreMode == "fast") boxScoreFast(pred, points) else boxScoreSlow(pred, contour)
+            val score =
+                if (scoreMode == "fast") boxScoreFast(pred, points) else boxScoreSlow(pred, contour)
             if (score < boxThresh) return@forEach
 
             val unclipped = unclip(points.toList())
@@ -321,7 +346,8 @@ class DBPostProcess(
 
         val mask = Mat.zeros(ymax - ymin + 1, xmax - xmin + 1, CvType.CV_8UC1)
         val adjustedBox = box.map { Point(it.x - xmin, it.y - ymin) }
-        val adjustedPoints = adjustedBox.map { Point(it.x.toInt().toDouble(), it.y.toInt().toDouble()) }
+        val adjustedPoints =
+            adjustedBox.map { Point(it.x.toInt().toDouble(), it.y.toInt().toDouble()) }
         val mat2f = listOf(MatOfPoint(*adjustedPoints.toTypedArray()))
         Imgproc.fillPoly(mask, mat2f, Scalar(1.0))
 
@@ -349,7 +375,8 @@ class DBPostProcess(
 
         val mask = Mat.zeros(ymax - ymin + 1, xmax - xmin + 1, CvType.CV_8UC1)
         val adjustedContour = points.map { Point(it.x - xmin, it.y - ymin) }
-        val adjustedPoints = adjustedContour.map { Point(it.x.toInt().toDouble(), it.y.toInt().toDouble()) }
+        val adjustedPoints =
+            adjustedContour.map { Point(it.x.toInt().toDouble(), it.y.toInt().toDouble()) }
         val mat2f = listOf(MatOfPoint(*adjustedPoints.toTypedArray()))
         Imgproc.fillPoly(mask, mat2f, Scalar(1.0))
 

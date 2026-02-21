@@ -6,11 +6,15 @@ import android.graphics.Bitmap
 import android.util.Size
 import com.baidu.paddle.lite.MobileConfig
 import com.baidu.paddle.lite.PaddlePredictor
+import com.baidu.paddle.lite.PowerMode
 import com.baidu.paddle.lite.Tensor
 import com.farhannz.kaitou.data.models.GroupedResult
 import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.domain.RawImage
 import com.farhannz.kaitou.helpers.Logger
+import com.farhannz.kaitou.impl.utils.CTCLabelDecoder
+import com.farhannz.kaitou.impl.utils.DBPostProcess
+
 import com.farhannz.kaitou.presentation.utils.toBitmap
 import com.farhannz.kaitou.presentation.utils.toDomain
 import com.farhannz.kaitou.presentation.utils.toMat
@@ -18,7 +22,6 @@ import org.opencv.core.*
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.io.FileOutputStream
-import java.util.*
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.min
@@ -31,8 +34,12 @@ abstract class BasePredictor {
     open lateinit var predictor: PaddlePredictor
     open lateinit var config: MobileConfig
 
-    init {
-        System.loadLibrary("paddle_lite_jni")
+    companion object {
+        init {
+            System.loadLibrary("paddle_lite_jni")
+        }
+
+        private const val TAG = "BasePredictor"
     }
 
     open fun initialize(context: Context, dirPath: String, fileName: String) {
@@ -42,7 +49,8 @@ abstract class BasePredictor {
         val absolutePath = copyAssetToCache(context, folderPath, modelName)
         config = MobileConfig().apply {
             modelFromFile = absolutePath
-            threads = 1
+            threads = 4
+            powerMode = PowerMode.LITE_POWER_HIGH
         }
         predictor = PaddlePredictor.createPaddlePredictor(config)
     }
@@ -86,17 +94,21 @@ class RecognitionPredictor : BasePredictor() {
 
     override fun initialize(context: Context, dirPath: String, fileName: String) {
         super.initialize(context, dirPath, fileName)
-        labelDecoder = CTCLabelDecoder(context.assets.open("paddle/dict.txt").bufferedReader().readLines())
+        labelDecoder =
+            CTCLabelDecoder(context.assets.open("paddle/dict.txt").bufferedReader().readLines())
     }
 
     fun runBatchInference(inputImages: List<Mat>): List<String> {
         if (inputImages.isEmpty()) return emptyList()
 
-        val e2e = Date()
-        var start = Date()
+        val e2eStart = System.nanoTime()
+        var start = System.nanoTime()
 
         // Preprocess all images
         val preprocessedImages = inputImages.map { preprocess(it) }
+        val preprocessTime = (System.nanoTime() - start) / 1_000_000.0
+        logger.INFO("[latency] runBatchInference preprocess: %.2f ms".format(preprocessTime))
+
         val batchSize = inputImages.size
         val height = preprocessedImages[0].rows()
         val width = preprocessedImages[0].cols()
@@ -128,14 +140,23 @@ class RecognitionPredictor : BasePredictor() {
         inputTensor.setData(batchData)
 
         // Run batch inference
-        start = Date()
+        start = System.nanoTime()
         val success = predictor.run()
+        val inferenceTime = (System.nanoTime() - start) / 1_000_000.0
+        logger.INFO("[latency] runBatchInference inference: %.2f ms".format(inferenceTime))
+
         if (!success) return List(batchSize) { "" }
 
         // Postprocess batch results
-        start = Date()
+        start = System.nanoTime()
         val outputTensor = predictor.getOutput(0)
         val texts = postprocessBatch(outputTensor, batchSize)
+        val postprocessTime = (System.nanoTime() - start) / 1_000_000.0
+        val e2eTime = (System.nanoTime() - e2eStart) / 1_000_000.0
+
+        logger.INFO("[latency] runBatchInference postprocess: %.2f ms".format(postprocessTime))
+        logger.INFO("[latency] runBatchInference e2e: %.2f ms, batchSize=$batchSize".format(e2eTime))
+
         return texts
     }
 
@@ -265,6 +286,7 @@ class DetectionPredictor : BasePredictor() {
     private var inputShape = longArrayOf(3, 960, 960)
     private val postprocessor = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 2.0)
     private var resizedInfo: FloatArray = floatArrayOf(1f, 1f, 1f)
+
     override fun infer(inputImage: RawImage): OcrResult {
         val input = inputImage.toBitmap()
         val result = runInference(input)
@@ -277,18 +299,16 @@ class DetectionPredictor : BasePredictor() {
     }
 
     fun runInference(inputImage: Bitmap): GroupedResult {
-        val end2end = Date()
+        val e2eStart = System.nanoTime()
         logger.INFO("Running inference")
-        var start = Date()
+        var start = System.nanoTime()
         val (preprocessed, resized) = preprocess(inputImage, inputShape)
-        var end = Date()
-        var inferenceTime = (end.time - start.time)
-//        logger.INFO("[stat] Preprocessing time $inferenceTime ms");
+        val preprocessTime = (System.nanoTime() - start) / 1_000_000.0
+        logger.INFO("[latency] Detection runInference preprocess: %.2f ms".format(preprocessTime))
 
         val inputTensor = predictor.getInput(0)
         inputTensor.resize(longArrayOf(1, 3, resized.width.toLong(), resized.height.toLong()))
         val inputShape = inputTensor.shape()  // Returns LongArray
-//        logger.DEBUG("Input shape: ${inputShape.joinToString(",")}")
 
         val requiredSize = inputShape.fold(1L, Long::times).toInt()
         if (preprocessed.size != requiredSize) {
@@ -303,41 +323,31 @@ class DetectionPredictor : BasePredictor() {
             throw e
         }
 
-        start = Date()
+        start = System.nanoTime()
         val success = predictor.run()
+        val inferenceTime = (System.nanoTime() - start) / 1_000_000.0
+        logger.INFO("[latency] Detection runInference inference: %.2f ms".format(inferenceTime))
+
         if (!success) {
             logger.ERROR("Failed while doing an inference")
             throw Throwable("Failed while doing an inference")
         }
-        end = Date()
-        inferenceTime = (end.time - start.time)
-        logger.INFO("[stat] Inference time $inferenceTime ms");
 
         val detConfig = mapOf(
             "det_db_thresh" to 0.3
         )
-        start = Date()
+        start = System.nanoTime()
         val postprocessed = postprocess(inputImage, detConfig, true)
-        end = Date()
-        inferenceTime = (end.time - start.time)
-//        logger.INFO("[stat] Postprocessing time $inferenceTime ms");
-//        logger.INFO("[stat] End to end time ${Date().time - end2end.time} ms");
+        val postprocessTime = (System.nanoTime() - start) / 1_000_000.0
+        val e2eTime = (System.nanoTime() - e2eStart) / 1_000_000.0
 
-//        ONLY FOR DEBUGGING
-//        Uncomment this to visualize the cropped polygons result
-//        if (BuildConfig.DEBUG) {
-//            postprocessed.boxes.forEachIndexed { index,  box ->
-//                val mat = Mat()
-//                Utils.bitmapToMat(inputImage, mat)
-//                val cropped = cropFromBox(mat, box, true)
-//                val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.5f
-//                if (isVertical) {
-//                    Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
-//                }
-//                val filePath = File(Environment.getExternalStorageDirectory(), "Download/PPOCR/cropped_$index.png").absolutePath
-//                Imgcodecs.imwrite(filePath, cropped)
-//            }
-//        }
+        logger.INFO("[latency] Detection runInference postprocess: %.2f ms".format(postprocessTime))
+        logger.INFO(
+            "[latency] Detection runInference e2e: %.2f ms, boxes=${postprocessed.detections.boxes.size}".format(
+                e2eTime
+            )
+        )
+
         return postprocessed
     }
 
@@ -388,5 +398,3 @@ class DetectionPredictor : BasePredictor() {
         return result
     }
 }
-
-

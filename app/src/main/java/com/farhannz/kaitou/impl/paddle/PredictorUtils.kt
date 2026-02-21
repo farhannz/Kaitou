@@ -27,6 +27,7 @@ fun letterboxBitmap(
     targetHeight: Int = 960,
     padColor: Int = Color.WHITE
 ): Pair<Bitmap, FloatArray> {
+    val start = System.nanoTime()
     val scale = min(
         targetWidth.toFloat() / bitmap.width,
         targetHeight.toFloat() / bitmap.height
@@ -44,6 +45,9 @@ fun letterboxBitmap(
 
     val padX = (targetWidth - newW) / 2f
     val padY = (targetHeight - newH) / 2f
+
+    val elapsed = (System.nanoTime() - start) / 1_000_000.0
+    logger.INFO("[latency] letterboxBitmap: %.2f ms, ${bitmap.width}x${bitmap.height} -> ${targetWidth}x${targetHeight}".format(elapsed))
 
     // Scale + pad info, useful for restoring box coords later
     return padded to floatArrayOf(scale, padX, padY)
@@ -81,6 +85,7 @@ fun norm(p1: Point, p2: Point): Double {
 }
 
 fun cropFromBox(image: Mat, box: List<Point>): Mat {
+    val start = System.nanoTime()
 
     if (box.size != 4) throw IllegalArgumentException("Box must have 4 points")
 
@@ -108,6 +113,10 @@ fun cropFromBox(image: Mat, box: List<Point>): Mat {
     srcMat.release()
     dstMat.release()
     transform.release()
+
+    val elapsed = (System.nanoTime() - start) / 1_000_000.0
+    logger.INFO("[latency] cropFromBox: %.2f ms, output=${maxWidth}x${maxHeight}".format(elapsed))
+
     return warped
 }
 
@@ -117,6 +126,7 @@ fun bitmapToFloatArray(
     mean: FloatArray = floatArrayOf(0.485f, 0.456f, 0.406f),
     std: FloatArray = floatArrayOf(0.229f, 0.224f, 0.225f)
 ): FloatArray {
+    val start = System.nanoTime()
     val pixels = IntArray(bitmap.width * bitmap.height)
     bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
 
@@ -137,6 +147,8 @@ fun bitmapToFloatArray(
                 this[i + 2 * bitmap.width * bitmap.height] = b
             }
         }
+        val elapsed = (System.nanoTime() - start) / 1_000_000.0
+        logger.INFO("[latency] bitmapToFloatArray: %.2f ms, ${bitmap.width}x${bitmap.height}".format(elapsed))
     }
 }
 

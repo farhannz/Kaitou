@@ -1,4 +1,4 @@
-package com.farhannz.kaitou.impl.paddle
+package com.farhannz.kaitou.impl.utils
 
 import kotlin.text.iterator
 
@@ -11,7 +11,8 @@ abstract class BaseRecLabelDecoder(
     var reverse: Boolean = false
 
     init {
-        var baseCharacters = characterList ?: "0123456789abcdefghijklmnopqrstuvwxyz".map { it.toString() }
+        var baseCharacters =
+            characterList ?: "0123456789abcdefghijklmnopqrstuvwxyz".map { it.toString() }
 
         if (useSpaceChar) {
             baseCharacters = baseCharacters + " "

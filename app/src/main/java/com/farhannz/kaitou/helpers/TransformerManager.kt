@@ -7,7 +7,7 @@ import ai.djl.util.Utils
 import android.content.Context
 import android.util.Log
 import com.farhannz.kaitou.domain.ModelInput
-import com.farhannz.kaitou.impl.OnnxModel
+import com.farhannz.kaitou.impl.onnxruntime.EmbeddingModel
 import kotlinx.serialization.json.Json
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -23,7 +23,7 @@ object TransformerManager {
     private val LOG_TAG = this::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private lateinit var tokenizer: HuggingFaceTokenizer
-    private lateinit var model: OnnxModel
+    private lateinit var model: EmbeddingModel
     private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
     private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
@@ -71,8 +71,8 @@ object TransformerManager {
 
     fun rankPairs(idsList: LongArray, attnMaskList: LongArray, batchSize: Long): FloatArray {
         logger.DEBUG("BEFORE RUN")
-        val result = model.run(ModelInput(idsList, attnMaskList), batchSize)
-        return result.output
+        val result = model.predict(ModelInput(idsList, attnMaskList), batchSize)
+        return result.embedding
     }
 
     fun getEmbeddings(text: String): FloatArray {
@@ -81,8 +81,8 @@ object TransformerManager {
         val masks = encoded.attentionMask
         logger.DEBUG("ids: ${ids.joinToString(",")}")
         logger.DEBUG("masks: ${masks.joinToString(",")}")
-        val embeddings = model.run(ModelInput(ids, masks))
-        return embeddings.output
+        val embeddings = model.predict(ModelInput(ids, masks))
+        return embeddings.embedding
     }
 
     fun copyAssetFolderToCache(
@@ -131,7 +131,7 @@ object TransformerManager {
             File(context.cacheDir, "hotchpotch/$modelName/int8.onnx").absolutePath
         val tokenizerPath =
             File(context.cacheDir, "hotchpotch/$modelName/tokenizer.json").absolutePath
-        model = OnnxModel(modelPath, useSentenceEmbedding = false)
+        model = EmbeddingModel(modelPath, useSentenceEmbedding = false)
         tokenizer = HuggingFaceTokenizer.newInstance(Path(tokenizerPath))
     }
 }
