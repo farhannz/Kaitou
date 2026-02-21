@@ -6,9 +6,9 @@ import com.farhannz.kaitou.domain.TextRecognizer
 import com.farhannz.kaitou.helpers.DatabaseManager
 import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TransformerManager
-import com.farhannz.kaitou.impl.EngineType
-import com.farhannz.kaitou.impl.PaddleEngineFactory
-import com.farhannz.kaitou.impl.PaddleTextRecognizer
+import com.farhannz.kaitou.impl.OnnxEngineFactory
+import com.farhannz.kaitou.impl.OnnxEngineType
+import com.farhannz.kaitou.impl.OnnxTextRecognizer
 import org.opencv.android.OpenCVLoader
 
 class MainApplication : Application() {
@@ -16,7 +16,6 @@ class MainApplication : Application() {
     private val logger = Logger(LOG_TAG!!)
     lateinit var detectionEngine: OcrEngine
         private set
-
     lateinit var recognitionEngine: OcrEngine
         private set
     lateinit var textRecognizer: TextRecognizer
@@ -31,8 +30,8 @@ class MainApplication : Application() {
         } else {
             logger.ERROR("OpenCV initialization failed")
         }
-        detectionEngine = PaddleEngineFactory.create(this, EngineType.Detection)
-        recognitionEngine = PaddleEngineFactory.create(this, EngineType.Recognition)
-        textRecognizer = PaddleTextRecognizer(recognitionEngine)
+        detectionEngine = OnnxEngineFactory.create(this, OnnxEngineType.Detection)
+        recognitionEngine = OnnxEngineFactory.create(this, OnnxEngineType.Recognition)
+        textRecognizer = OnnxTextRecognizer(recognitionEngine)
     }
 }

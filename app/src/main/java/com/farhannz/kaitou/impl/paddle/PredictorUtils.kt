@@ -18,7 +18,7 @@ import kotlin.math.min
 import kotlin.math.sqrt
 import androidx.core.graphics.createBitmap
 
-private val LOG_TAG = "PredictorUtilsNew"
+private val LOG_TAG = "PredictorUtils"
 private val logger = Logger(LOG_TAG)
 
 fun letterboxBitmap(
@@ -47,7 +47,11 @@ fun letterboxBitmap(
     val padY = (targetHeight - newH) / 2f
 
     val elapsed = (System.nanoTime() - start) / 1_000_000.0
-    logger.INFO("[latency] letterboxBitmap: %.2f ms, ${bitmap.width}x${bitmap.height} -> ${targetWidth}x${targetHeight}".format(elapsed))
+    logger.INFO(
+        "[latency] letterboxBitmap: %.2f ms, ${bitmap.width}x${bitmap.height} -> ${targetWidth}x${targetHeight}".format(
+            elapsed
+        )
+    )
 
     // Scale + pad info, useful for restoring box coords later
     return padded to floatArrayOf(scale, padX, padY)
@@ -109,7 +113,12 @@ fun cropFromBox(image: Mat, box: List<Point>): Mat {
 
     val transform = Imgproc.getPerspectiveTransform(srcMat, dstMat)
     val warped = Mat()
-    Imgproc.warpPerspective(image, warped, transform, CvSize(maxWidth.toDouble(), maxHeight.toDouble()))
+    Imgproc.warpPerspective(
+        image,
+        warped,
+        transform,
+        CvSize(maxWidth.toDouble(), maxHeight.toDouble())
+    )
     srcMat.release()
     dstMat.release()
     transform.release()
@@ -148,7 +157,11 @@ fun bitmapToFloatArray(
             }
         }
         val elapsed = (System.nanoTime() - start) / 1_000_000.0
-        logger.INFO("[latency] bitmapToFloatArray: %.2f ms, ${bitmap.width}x${bitmap.height}".format(elapsed))
+        logger.INFO(
+            "[latency] bitmapToFloatArray: %.2f ms, ${bitmap.width}x${bitmap.height}".format(
+                elapsed
+            )
+        )
     }
 }
 
