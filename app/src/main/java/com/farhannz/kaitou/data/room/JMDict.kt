@@ -33,7 +33,7 @@ abstract class JmdictDatabase : RoomDatabase() {
                 context.applicationContext,
                 JmdictDatabase::class.java,
                 "jmdict"
-            ).createFromAsset("jmdict/jmdict_common.db")
+            ).createFromAsset("jmdict/jmdict-with-example-en-jp.db")
                 .fallbackToDestructiveMigration(false)
                 .build()
         }

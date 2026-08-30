@@ -42,61 +42,18 @@ import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.MainApplication
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.domain.OcrResult
-import com.farhannz.kaitou.helpers.InflectionRules
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.helpers.TransformerManager
+import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.impl.JMDict
+import com.farhannz.kaitou.presentation.ocr.PopupViewModel
 import com.farhannz.kaitou.presentation.utils.toCurrentImpl
 import com.farhannz.kaitou.presentation.utils.toRawImage
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.Callback
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
-import org.apache.lucene.analysis.ja.JapaneseTokenizer
-import org.apache.lucene.analysis.ja.tokenattributes.*
-import org.apache.lucene.analysis.tokenattributes.*
-import java.io.ByteArrayOutputStream
-import java.io.StringReader
 import com.farhannz.kaitou.domain.Point as DomainPoint
 
 const val LOG_TAG = "UI.Components"
 val logger = Logger(LOG_TAG)
-
-fun tokenizeWithPOS(text: String): List<TokenInfo> {
-    val tokenizer = JapaneseTokenizer(null, false, JapaneseTokenizer.Mode.NORMAL)
-    tokenizer.setReader(StringReader(text))
-    tokenizer.reset()
-    val readingAttr = tokenizer.getAttribute(ReadingAttribute::class.java)
-    val inflectionAttr = tokenizer.getAttribute(InflectionAttribute::class.java)
-    val surfaceAttr = tokenizer.getAttribute(CharTermAttribute::class.java)
-    val baseAttr = tokenizer.getAttribute(BaseFormAttribute::class.java)
-    val posAttr = tokenizer.getAttribute(PartOfSpeechAttribute::class.java)
-
-    val result = mutableListOf<TokenInfo>()
-
-    while (tokenizer.incrementToken()) {
-        result.add(
-            TokenInfo(
-                surface = surfaceAttr.toString(),
-                baseForm = baseAttr?.baseForm ?: surfaceAttr.toString(),
-                partOfSpeech = posAttr.partOfSpeech ?: "未知",
-                reading = readingAttr?.reading ?: "",
-                inflectionType = inflectionAttr?.inflectionType ?: "",
-                inflectionForm = inflectionAttr?.inflectionForm ?: ""
-            )
-        )
-    }
-
-//    Log.d("TokenizeWithPOS", result.joinToString("\n"))
-    tokenizer.end()
-    tokenizer.close()
-
-    return result
-}
 
 @Composable
 fun BottomPopup(onDismiss: () -> Unit, content: @Composable ColumnScope.() -> Unit) {
@@ -243,7 +200,7 @@ fun WordPolygonsOverlay(
     val tappedIndex = remember { mutableIntStateOf(-1) }
     SubcomposeLayout { constraints ->
         val canvasPlaceable = subcompose("Canvas") {
-            DrawPolygons(wordsWithPolys, screenSize, listOf(tappedIndex.value))
+            DrawPolygons(wordsWithPolys, screenSize, listOf(tappedIndex.intValue))
         }.map { it.measure(constraints) }
 
         val overlayPlaceable = subcompose("Overlay") {
@@ -263,7 +220,7 @@ fun WordPolygonsOverlay(
                             val scaleY = canvasHeight / screenSize.second.toFloat()
 
                             // Check if tap is inside any polygon's bounding box
-                            tappedIndex.value = boundingBoxes.indexOfFirst { (_, rect) ->
+                            tappedIndex.intValue = boundingBoxes.indexOfFirst { (_, rect) ->
                                 offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
                                         offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
                             }
@@ -286,21 +243,26 @@ fun WordPolygonsOverlay(
                         if (useDarkTheme) dynamicDarkColorScheme(LocalContext.current) else dynamicLightColorScheme(
                             LocalContext.current
                         )
+                    val coroutineScope = rememberCoroutineScope()
+                    val popupViewModel = remember { PopupViewModel(coroutineScope) }
+
                     MaterialTheme(colorScheme = colors) {
                         BottomPopup(
-                            onDismiss = { showPopup = false }
+                            onDismiss = {
+                                popupViewModel.clearStates()
+                                showPopup = false
+                            }
                         ) {
                             var merged by remember { mutableStateOf<List<TokenInfo>?>(null) }
                             var selectedWord by remember { mutableStateOf("") }
                             var selectedEmbedding by remember { mutableStateOf(FloatArray(128)) }
 
                             LaunchedEffect(selectedIndices.joinToString("")) {
-                                merged = null // reset before loading
+                                merged = null
+                                popupViewModel.clearStates()
                                 withContext(Dispatchers.Default) {
                                     val engine =
                                         (context.applicationContext as MainApplication).textRecognizer
-                                    //                                val texts = OCRPipeline.extractTexts(originalImage, grouped, selectedIndices.reversed())
-                                    //                                selectedWord = texts.joinToString("")
                                     val raw = originalImage.toRawImage()
                                     val domainBoxes = grouped.detections.boxes.map { box ->
                                         box.map {
@@ -310,26 +272,13 @@ fun WordPolygonsOverlay(
                                     selectedWord =
                                         engine.recognize(raw, domainBoxes, selectedIndices)
                                             .joinToString("") { it.text }
-//                                    selectedEmbedding =
-//                                        TransformerManager.getEmbeddings(selectedWord)
                                     logger.DEBUG(selectedWord)
-//                                    logger.DEBUG("Embedding : ${selectedEmbedding.joinToString(",")}")
-                                    // TODO(Move tokenize to impl?)
-                                    val tokens = tokenizeWithPOS(selectedWord)
+                                    val tokens = TokenHelper.tokenizeWithPOS(selectedWord)
                                     logger.DEBUG("Raw Tokens : ${tokens.size}")
-                                    //                                logger.DEBUG(selectedWord)
-                                    //                                val passiveProcessed = BoundaryViterbi.preProcessPassive(tokens).let {
-                                    //                                    TokenHelper.correctAuxiliaryNegative(it)
-                                    //                                }
-                                    //                                val result = BoundaryViterbi.segment(tokens, DatabaseManager.getCache()!!)
-                                    //                                logger.DEBUG(result.joinToString("\n"))
-//                                    val inflected = InflectionRules.matchInflection(tokens)
-//                                    logger.DEBUG("After Inflected : ${inflected.size}")
                                     JMDict.clearCache()
                                     merged = tokens
                                 }
                             }
-                            // Show loading until `merged` is ready
                             if (merged == null) {
                                 Box(
                                     modifier = Modifier
@@ -343,8 +292,10 @@ fun WordPolygonsOverlay(
                                 BottomSheetContent(
                                     merged = merged!!,
                                     selectedWord = selectedWord,
-                                    selectedEmbedding = selectedEmbedding
+                                    selectedEmbedding = selectedEmbedding,
+                                    viewModel = popupViewModel
                                 ) {
+                                    popupViewModel.clearStates()
                                     showPopup = false
                                 }
                             }
@@ -360,33 +311,6 @@ fun WordPolygonsOverlay(
         }
     }
 }
-
-fun bitmapToByteArray(bitmap: Bitmap): ByteArray {
-    val stream = ByteArrayOutputStream()
-    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, stream)
-    return stream.toByteArray()
-}
-
-fun sendBitmapToServer(bitmap: Bitmap, callback: Callback) {
-    val client = OkHttpClient()
-    val mediaType = "image/jpeg".toMediaTypeOrNull()
-    val imageBytes = bitmapToByteArray(bitmap)
-
-    val requestBody = MultipartBody.Builder()
-        .setType(MultipartBody.FORM)
-        .addFormDataPart(
-            "file", "image.jpg",
-            imageBytes.toRequestBody(mediaType)
-        )
-        .build()
-
-    val request = Request.Builder()
-        .url(" http://192.168.101.6:8000/ocr")
-        .post(requestBody)
-        .build()
-    client.newCall(request).enqueue(callback)
-}
-
 
 fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
     val values = ContentValues()
@@ -405,7 +329,7 @@ fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
                 }
             }
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.ERROR("Failed to save image to gallery: ${e.message}")
             Toast.makeText(context, "Error saving image", Toast.LENGTH_SHORT).show()
         }
     } else {

@@ -7,10 +7,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -19,28 +15,19 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.farhannz.kaitou.data.models.*
-import com.farhannz.kaitou.domain.LookupResult
+import com.farhannz.kaitou.data.models.TokenInfo
 import com.farhannz.kaitou.domain.MorphemeData
-import com.farhannz.kaitou.helpers.posMapping
-import com.farhannz.kaitou.impl.JMDict
 import com.farhannz.kaitou.presentation.ocr.MorphemeCard
+import com.farhannz.kaitou.presentation.ocr.MorphemeLookupState
+import com.farhannz.kaitou.presentation.ocr.PopupViewModel
 import com.farhannz.kaitou.presentation.ocr.StickyHeader
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-
-
-//@Composable
-////@Preview
-//fun previewBottomSheet() {
-//    BottomSheetContent(listOf(TokenInfo("元気", "元気", "asd")), "元気ですか", {})
-//}
 
 @Composable
 fun BottomSheetContent(
     merged: List<TokenInfo>,
     selectedWord: String,
     selectedEmbedding: FloatArray,
+    viewModel: PopupViewModel,
     onDismiss: () -> Unit
 ) {
     val configuration = LocalConfiguration.current
@@ -64,13 +51,17 @@ fun BottomSheetContent(
                 onDismiss = onDismiss
             )
             logger.DEBUG("Merged size ${merged.size}")
-            MorphemeBreakdownCard(merged, selectedEmbedding)
+            MorphemeBreakdownCard(merged, selectedEmbedding, viewModel)
         }
     }
 }
 
 @Composable
-fun MorphemeBreakdownCard(merged: List<TokenInfo>, selectedEmbedding: FloatArray) {
+fun MorphemeBreakdownCard(
+    merged: List<TokenInfo>,
+    selectedEmbedding: FloatArray,
+    viewModel: PopupViewModel
+) {
     LazyColumn(
         modifier = Modifier
             .fillMaxWidth()
@@ -78,7 +69,7 @@ fun MorphemeBreakdownCard(merged: List<TokenInfo>, selectedEmbedding: FloatArray
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         items(merged.size) { idx ->
-            MorphemeItemCard(idx, merged, selectedEmbedding)
+            MorphemeItemCard(idx, merged, selectedEmbedding, viewModel)
         }
     }
 }
@@ -87,31 +78,17 @@ fun MorphemeBreakdownCard(merged: List<TokenInfo>, selectedEmbedding: FloatArray
 fun MorphemeItemCard(
     tokenIdx: Int,
     sentenceTokens: List<TokenInfo>,
-    selectedEmbedding: FloatArray
+    selectedEmbedding: FloatArray,
+    viewModel: PopupViewModel
 ) {
     val token = sentenceTokens[tokenIdx]
-    var state by remember(token) { mutableStateOf<LookupState>(LookupState.LookingUp) }
 
     LaunchedEffect(token) {
-        val result = JMDict.lookup(tokenIdx, sentenceTokens, selectedEmbedding)
-        when (result) {
-            is LookupResult.Success -> {
-                state = LookupState.Done(result)
-            }
-
-            is LookupResult.Error -> {
-                state = LookupState.NotFound
-            }
-
-            is LookupResult.Skipped -> {
-                logger.INFO(result.message)
-                state = LookupState.Skipped
-            }
-        }
+        viewModel.lookupMorpheme(tokenIdx, sentenceTokens, selectedEmbedding)
     }
 
-    when (val s = state) {
-        is LookupState.LookingUp -> {
+    when (val state = viewModel.getMorphemeState(tokenIdx)) {
+        is MorphemeLookupState.Loading -> {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -122,36 +99,17 @@ fun MorphemeItemCard(
             }
         }
 
-        is LookupState.Skipped -> {
-//            Do nothing
+        is MorphemeLookupState.Skipped -> {
         }
 
-        is LookupState.Done -> {
-            val entry = s.result.morphemeData
-            logger.DEBUG(entry.toString())
-            MorphemeCard(
-                entry
-            )
+        is MorphemeLookupState.Done -> {
+            logger.DEBUG(state.data.toString())
+            MorphemeCard(state.data)
         }
 
-        is LookupState.NotFound -> {
-            val meaning = if (token.metadata.containsKey("merged_meaning")) {
-                token.metadata["merged_meaning"] as String
-            } else {
-                ""
-            }
-            val reading = token.reading.ifEmpty {
-                ""
-            }
-            val entry = MorphemeData(
-                token.baseForm ?: token.surface,
-                reading,
-                meaning,
-                posMapping[token.partOfSpeech]?.joinToString(",") ?: ""
-            )
-            MorphemeCard(
-                entry
-            )
+        is MorphemeLookupState.NotFound -> {
+            val entry = viewModel.getFallbackMorphemeData(token)
+            MorphemeCard(entry)
         }
     }
 }
@@ -198,17 +156,4 @@ fun MorphemeItem(
             )
         }
     }
-}
-
-//@Preview
-//@Composable
-//fun PreviewPopUp() {
-//    PopUpDict(TokenInfo("test", "test", "test"))
-//}
-
-sealed class LookupState {
-    object LookingUp : LookupState()
-    object Skipped : LookupState()
-    data class Done(val result: LookupResult.Success) : LookupState()
-    object NotFound : LookupState()
 }

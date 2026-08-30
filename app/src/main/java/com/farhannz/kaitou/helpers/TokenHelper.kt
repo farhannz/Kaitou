@@ -1,9 +1,12 @@
 package com.farhannz.kaitou.helpers
 
-//import ai.djl.nn.core.Embedding
 import com.farhannz.kaitou.data.models.TokenInfo
 import com.farhannz.kaitou.data.models.WordFull
 import kotlinx.serialization.json.Json
+import org.apache.lucene.analysis.ja.JapaneseTokenizer
+import org.apache.lucene.analysis.ja.tokenattributes.*
+import org.apache.lucene.analysis.tokenattributes.*
+import java.io.StringReader
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.sqrt
@@ -34,6 +37,37 @@ object TokenHelper {
         "かな" to "self-questioning / uncertainty",
         "かしら" to "I wonder… (feminine)"
     )
+
+    fun tokenizeWithPOS(text: String): List<TokenInfo> {
+        val tokenizer = JapaneseTokenizer(null, false, JapaneseTokenizer.Mode.NORMAL)
+        tokenizer.setReader(StringReader(text))
+        tokenizer.reset()
+        val readingAttr = tokenizer.getAttribute(ReadingAttribute::class.java)
+        val inflectionAttr = tokenizer.getAttribute(InflectionAttribute::class.java)
+        val surfaceAttr = tokenizer.getAttribute(CharTermAttribute::class.java)
+        val baseAttr = tokenizer.getAttribute(BaseFormAttribute::class.java)
+        val posAttr = tokenizer.getAttribute(PartOfSpeechAttribute::class.java)
+
+        val result = mutableListOf<TokenInfo>()
+
+        while (tokenizer.incrementToken()) {
+            result.add(
+                TokenInfo(
+                    surface = surfaceAttr.toString(),
+                    baseForm = baseAttr?.baseForm ?: surfaceAttr.toString(),
+                    partOfSpeech = posAttr.partOfSpeech ?: "未知",
+                    reading = readingAttr?.reading ?: "",
+                    inflectionType = inflectionAttr?.inflectionType ?: "",
+                    inflectionForm = inflectionAttr?.inflectionForm ?: ""
+                )
+            )
+        }
+
+        tokenizer.end()
+        tokenizer.close()
+
+        return result
+    }
 
     fun cosineSimilarity(a: FloatArray, b: FloatArray): Float {
         require(a.size == b.size)
