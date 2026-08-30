@@ -11,6 +11,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    environment: action-release
     steps:
       - name: Checkout self
         uses: actions/checkout@v4
