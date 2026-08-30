@@ -1,4 +1,14 @@
-import org.jetbrains.kotlin.js.inline.clean.removeUnusedImports
+import java.util.Properties
+
+// Signing material is never hardcoded. Local builds: keystore.properties
+// (gitignored). CI: env vars (KEY_STORE_PASSWORD, KEY_PASSWORD, ALIAS).
+val keystoreProps = Properties().apply {
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { load(it) }
+}
+
+fun signingProp(key: String, env: String): String? =
+    keystoreProps.getProperty(key) ?: System.getenv(env)
 
 plugins {
     id("com.android.application")
@@ -35,10 +45,14 @@ android {
     }
     signingConfigs {
         create("release") {
-            storeFile = file("../release-key.jks")
-            storePassword = "***REMOVED***"
-            keyAlias = "***REMOVED***"
-            keyPassword = "***REMOVED***"
+            val storePass = signingProp("storePassword", "KEY_STORE_PASSWORD")
+            val keyPass = signingProp("keyPassword", "KEY_PASSWORD")
+            if (storePass != null && keyPass != null) {
+                storeFile = signingProp("storeFile", "KEY_STORE_FILE")?.let { file(it) }
+                storePassword = storePass
+                keyAlias = signingProp("keyAlias", "ALIAS")
+                keyPassword = keyPass
+            }
         }
     }
     buildTypes {
