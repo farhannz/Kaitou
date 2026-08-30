@@ -10,7 +10,6 @@ import com.farhannz.kaitou.domain.RecognizedText
 import com.farhannz.kaitou.domain.TextRecognizer
 import com.farhannz.kaitou.impl.onnxruntime.DetectionModel
 import com.farhannz.kaitou.impl.onnxruntime.RecognitionModel
-import com.farhannz.kaitou.impl.paddle.cropFromBox
 import com.farhannz.kaitou.presentation.utils.toMat
 import org.opencv.core.Core
 import org.opencv.core.Point as CvPoint
@@ -50,13 +49,14 @@ class OnnxEngine(val predictor: Any) : OcrEngine {
 object OnnxEngineFactory {
     fun create(context: Context, engine: OnnxEngineType): OcrEngine = when (engine) {
         OnnxEngineType.Detection -> {
-            val modelPath = copyAssetToCache(context, "onnx", "ppocrv5_mobile_det_static.onnx")
+            val modelPath = copyAssetToCache(context, "onnx", "PP-OCRv6_tiny_det.onnx")
             OnnxEngine(DetectionModel(modelPath))
         }
 
         OnnxEngineType.Recognition -> {
-            val modelPath = copyAssetToCache(context, "onnx", "ppocrv5_mobile_rec_static.onnx")
-            val characterList = context.assets.open("onnx/dict.txt").bufferedReader().readLines()
+            val modelPath = copyAssetToCache(context, "onnx", "PP-OCRv6_small_rec_static.onnx")
+            val characterList =
+                context.assets.open("onnx/ppocrv6_dict.txt").bufferedReader().readLines()
             OnnxEngine(RecognitionModel(modelPath, characterList))
         }
     }

@@ -1,0 +1,132 @@
+package com.farhannz.kaitou.impl
+
+import android.content.Context
+import android.graphics.Bitmap
+import android.util.Log
+import com.farhannz.kaitou.domain.OcrEngine
+import com.farhannz.kaitou.helpers.Logger
+import com.farhannz.kaitou.domain.OcrResult
+import com.farhannz.kaitou.domain.Point
+import com.farhannz.kaitou.domain.RawImage
+import com.farhannz.kaitou.domain.RecognizedText
+import com.farhannz.kaitou.domain.TextRecognizer
+import com.farhannz.kaitou.impl.paddle.BasePredictor
+import com.farhannz.kaitou.impl.paddle.DetectionPredictor
+import com.farhannz.kaitou.impl.paddle.RecognitionPredictor
+import com.farhannz.kaitou.impl.paddle.cropFromBox
+import com.farhannz.kaitou.presentation.utils.toMat
+import com.farhannz.kaitou.presentation.utils.toRawImage
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import org.opencv.core.Core
+import kotlin.collections.component1
+import kotlin.collections.component2
+import org.opencv.core.Point as CvPoint
+
+enum class EngineType {
+    Detection, Recognition
+}
+
+
+class PaddleEngine(val predictor: BasePredictor) : OcrEngine {
+    override suspend fun infer(image: RawImage): OcrResult {
+        return predictor.infer(image)
+    }
+}
+
+object PaddleEngineFactory {
+    fun create(context: Context, engine: EngineType): OcrEngine =
+        when (engine) {
+            EngineType.Detection -> {
+                val predictor = DetectionPredictor()
+                predictor.initialize(context, "paddle", "ppocrv5_det.nb")
+                PaddleEngine(predictor)
+            }
+
+            EngineType.Recognition -> {
+                val predictor = RecognitionPredictor()
+                predictor.initialize(context, "paddle", "ppocrv5_rec.nb")
+                PaddleEngine(predictor)
+            }
+        }
+}
+
+class PaddleTextRecognizer(
+    private val recognitionEngine: OcrEngine
+) : TextRecognizer {
+    private val LOG_TAG = PaddleTextRecognizer::class.simpleName
+    private val logger = Logger(LOG_TAG!!)
+
+    override suspend fun recognize(
+        image: RawImage,
+        boxes: List<List<Point>>,
+        selectedIndices: List<Int>
+    ): List<RecognizedText> {
+        val e2eStart = System.nanoTime()
+        Log.d(LOG_TAG, boxes.joinToString(";"))
+
+        val tolerance = 20
+        val boxes = selectedIndices
+            .map { boxes[it] }
+            .groupBy { box -> (box.minOf { it.x } / tolerance).toInt() } // group by column
+            .toSortedMap(reverseOrder()) // right-to-left columns
+            .flatMap { (_, columnBoxes) ->
+                columnBoxes.sortedBy { it.minOf { p -> p.y } } // top-to-bottom in column
+            }
+
+        val mat = image.toMat()
+        val boxCount = boxes.size
+        var idx = 0
+        var totalBoxTime = 0L
+
+        val results = boxes.mapNotNull { box ->
+            val boxStart = System.nanoTime()
+            val cropped = cropFromBox(mat, box.map { CvPoint(it.x.toDouble(), it.y.toDouble()) })
+            val isVertical = (cropped.height().toFloat() / cropped.width().toFloat()) > 1.25f
+            if (isVertical) {
+                Core.rotate(cropped, cropped, Core.ROTATE_90_COUNTERCLOCKWISE)
+            }
+            val croppedRaw = cropped.toRawImage()
+            when (val result = recognitionEngine.infer(croppedRaw)) {
+                is OcrResult.Recognition -> {
+                    idx++
+                    val boxTime = System.nanoTime() - boxStart
+                    totalBoxTime += boxTime
+                    logger.INFO("[latency] recognize box#$idx: %.2f ms".format(boxTime / 1_000_000.0))
+                    RecognizedText(result.texts.joinToString(), box)
+                }
+
+                else -> null
+            }
+        }
+
+        val e2eTime = (System.nanoTime() - e2eStart) / 1_000_000.0
+        logger.INFO(
+            "[latency] recognize e2e: %.2f ms, boxes=$boxCount, recognized=$idx, avgPerBox=%.2f ms".format(
+                e2eTime, totalBoxTime / 1_000_000.0 / boxCount
+            )
+        )
+
+        return results
+    }
+}
+
+data class SystemInsets(val left: Int, val top: Int, val right: Int, val bottom: Int)
+data class ScreenshotData(
+    val id: Long,
+    val bitmap: Bitmap,
+    val insets: SystemInsets = SystemInsets(0, 0, 0, 0)
+)
+
+object ScreenshotStore {
+    private val _latestScreenshot = MutableStateFlow<ScreenshotData?>(null)
+    val latestScreenshot = _latestScreenshot.asStateFlow()
+
+    fun updateScreenshot(bitmap: Bitmap) {
+        _latestScreenshot.value = ScreenshotData(System.currentTimeMillis(), bitmap)
+    }
+
+    fun clear() {
+        _latestScreenshot.value = null
+    }
+}

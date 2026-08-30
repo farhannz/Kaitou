@@ -1,6 +1,3 @@
-# Paddle Lite
--keep class com.baidu.paddle.lite.** { *; }
-
 # Lucene general token attributes
 -keep class org.apache.lucene.analysis.tokenattributes.* { *; }
 -keep class org.apache.lucene.analysis.tokenattributes.*Impl { *; }
@@ -30,5 +27,5 @@
 
 
 ## Optional: disable obfuscation/optimization if still debugging
--dontobfuscate
+#-dontobfuscate
 #-dontoptimize
