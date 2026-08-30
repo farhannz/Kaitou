@@ -8,8 +8,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.graphics.Bitmap
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
 import android.media.ImageReader
@@ -20,7 +20,7 @@ import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import android.view.WindowInsets
+import android.view.Display
 import android.view.WindowManager
 import androidx.annotation.RequiresApi
 import androidx.core.app.NotificationCompat
@@ -31,7 +31,7 @@ import com.farhannz.kaitou.presentation.utils.toBitmap
 class ScreenshotServiceRework : Service() {
 
 
-    private val LOG_TAG = ScreenshotServiceRework::class.simpleName;
+    private val LOG_TAG = ScreenshotServiceRework::class.simpleName
     private val logger = Logger(LOG_TAG!!)
     private var mediaProjection: MediaProjection? = null
     private var imageReader: ImageReader? = null
@@ -39,6 +39,14 @@ class ScreenshotServiceRework : Service() {
 
     var rc: Int = Int.MIN_VALUE
     var dataIntent: Intent? = null
+
+    // Real display resolution. Must come from maximumWindowMetrics, NOT
+    // resources.displayMetrics: the latter is the app-usable window size and
+    // varies with nav-bar mode, display zoom, cutouts and windowing. Sizing the
+    // VirtualDisplay/ImageReader from it would silently scale the mirrored
+    // frame and skew every downstream OCR coordinate.
+    private var displayWidth = 0
+    private var displayHeight = 0
 
     private val shutdownReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -65,14 +73,15 @@ class ScreenshotServiceRework : Service() {
                     dataIntent!!
                 )
             logger.DEBUG("MediaProjection Permission Granted")
-            val metrics = resources.displayMetrics
-            val width = metrics.widthPixels
-            val height = metrics.heightPixels
-            val density = metrics.densityDpi
+            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            displayWidth = bounds.width()
+            displayHeight = bounds.height()
+            val density = resources.displayMetrics.densityDpi
             virtualDisplay = mediaProjection?.createVirtualDisplay(
                 "SingleShot",
-                width,
-                height,
+                displayWidth,
+                displayHeight,
                 density,
                 DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
                 imageReader?.surface,
@@ -105,30 +114,15 @@ class ScreenshotServiceRework : Service() {
         return START_NOT_STICKY
     }
 
-    fun excludeWindowInsets(bitmap: Bitmap): Bitmap {
-        val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        val windowMetrics = windowManager.currentWindowMetrics
-
-        val insets = windowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
-
-        val cropTop = insets.top
-        val cropBottom = insets.bottom
-        val cropLeft = insets.left
-        val cropRight = insets.right
-        logger.DEBUG(insets.toString())
-
-        val cropWidth = bitmap.width - cropLeft - cropRight
-        val cropHeight = bitmap.height - cropTop - cropBottom
-
-        return Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
-    }
-
     fun prepareScreenshot() {
         logger.DEBUG("rc = $rc, dataIntent = $dataIntent")
-        val metrics = resources.displayMetrics
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        if (displayWidth == 0 || displayHeight == 0) {
+            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            displayWidth = bounds.width()
+            displayHeight = bounds.height()
+        }
+        imageReader = ImageReader.newInstance(displayWidth, displayHeight, PixelFormat.RGBA_8888, 2)
         virtualDisplay?.surface = imageReader?.surface
         var captured = false
         val handler = Handler(Looper.getMainLooper())
@@ -143,9 +137,20 @@ class ScreenshotServiceRework : Service() {
                     return@setOnImageAvailableListener
                 }
 
-                val bitmap = excludeWindowInsets(image.toBitmap())
+                // Keep the full display frame (no inset cropping). The bitmap is
+                // a 1:1 mirror of the display, so the edge-to-edge overlay can
+                // draw it without inset compensation. Cropping here while the
+                // UI re-applied safeDrawing insets double-subtracted them
+                // inconsistently across devices.
+                val bitmap = image.toBitmap()
                 image.close()
-                ScreenshotStore.updateScreenshot(bitmap)
+                val displayManager = getSystemService(DISPLAY_SERVICE) as DisplayManager
+                val rotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY).rotation
+                ScreenshotStore.updateScreenshot(
+                    bitmap,
+                    Rect(0, 0, bitmap.width, bitmap.height),
+                    rotation
+                )
 
             } catch (e: Throwable) {
                 logger.ERROR(e.message!!)

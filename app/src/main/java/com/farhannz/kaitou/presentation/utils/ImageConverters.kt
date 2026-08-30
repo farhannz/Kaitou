@@ -6,6 +6,7 @@ import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.domain.RawImage
 import org.opencv.core.CvType
 import org.opencv.core.Mat
+import java.nio.ByteBuffer
 
 fun Bitmap.toRawImage(): RawImage {
     val width = this.width
@@ -97,11 +98,28 @@ fun Image.toBitmap(): Bitmap {
         val buffer = plane.buffer
         val pixelStride = plane.pixelStride
         val rowStride = plane.rowStride
-        val rowPadding = rowStride - pixelStride * width
+        require(pixelStride == 4) { "Expected RGBA_8888 (pixelStride=4), got pixelStride=$pixelStride" }
 
-        return createBitmap(width + rowPadding / pixelStride, height).apply {
-            copyPixelsFromBuffer(buffer)
+        val rowPadding = rowStride - pixelStride * width
+        val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+
+        if (rowPadding == 0) {
+            // Stride is tight, the buffer maps 1:1 onto the bitmap
+            bitmap.copyPixelsFromBuffer(buffer)
+            return bitmap
         }
+
+        // ImageReader rows are stride-aligned on many devices (to 64/128/256px).
+        // Copying the buffer linearly would create a bitmap inflated by
+        // rowPadding/pixelStride pixels of garbage on the right, skewing every
+        // downstream coordinate. Copy row-by-row into a tightly packed buffer.
+        val packed = ByteArray(width * height * 4)
+        for (row in 0 until height) {
+            buffer.position(row * rowStride)
+            buffer.get(packed, row * width * 4, width * 4)
+        }
+        bitmap.copyPixelsFromBuffer(ByteBuffer.wrap(packed))
+        return bitmap
     } catch (e: Exception) {
         throw RuntimeException("Failed to convert image to bitmap", e)
     }

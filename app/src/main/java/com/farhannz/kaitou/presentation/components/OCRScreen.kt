@@ -46,6 +46,7 @@ import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.helpers.TokenHelper
 import com.farhannz.kaitou.impl.JMDict
 import com.farhannz.kaitou.presentation.ocr.PopupViewModel
+import com.farhannz.kaitou.presentation.utils.ImageTransform
 import com.farhannz.kaitou.presentation.utils.toCurrentImpl
 import com.farhannz.kaitou.presentation.utils.toRawImage
 import kotlinx.coroutines.Dispatchers
@@ -134,25 +135,22 @@ fun DrawPolygons(
     }
     val imageSize = Size(screenSize.first.toFloat(), screenSize.second.toFloat())
     Canvas(
-        modifier = Modifier
-            .fillMaxSize()
-            .windowInsetsPadding(WindowInsets.safeDrawing)
+        modifier = Modifier.fillMaxSize()
     ) {
-        val scaleX = size.width / imageSize.width
-        val scaleY = size.height / imageSize.height
-//        drawRect(
-//            color = Color.Red,
-//            topLeft = Offset(0f, 0f),
-//            size = Size(imageSize.width * scaleX, imageSize.height * scaleY),
-//            style = Stroke(width = 2.dp.toPx())
-//        )
+        // No safeDrawing padding here: the screenshot is a full uncropped
+        // display mirror and this canvas is edge-to-edge, so the transform is
+        // the only mapping between OCR space and screen space. Padding here
+        // would shift boxes by the inset amount (device dependent).
+        val transform = ImageTransform.fit(imageSize, size)
 
         rawPaths.forEachIndexed { index, poly ->
             val isSelected = selectedIndices.contains(index)
             val path = Path().apply {
-                moveTo(poly[0].x * scaleX, poly[0].y * scaleY)
+                val first = transform.toScreen(poly[0])
+                moveTo(first.x, first.y)
                 poly.drop(1).forEach {
-                    lineTo(it.x * scaleX, it.y * scaleY)
+                    val p = transform.toScreen(it)
+                    lineTo(p.x, p.y)
                 }
                 close()
             }
@@ -209,20 +207,21 @@ fun WordPolygonsOverlay(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(Color(0x10000000))
-                    .windowInsetsPadding(WindowInsets.safeDrawing)
                     .pointerInput(wordsWithPolys, boundingBoxes) {
-//                logger.DEBUG(boundingBoxes.toString())
                         detectTapGestures { offset: Offset ->
                             logger.DEBUG(offset.toString())
-                            val canvasWidth = size.width
-                            val canvasHeight = size.height
-                            val scaleX = canvasWidth / screenSize.first.toFloat()
-                            val scaleY = canvasHeight / screenSize.second.toFloat()
+                            // Same transform as DrawPolygons: convert the tap
+                            // into image space and hit-test against the raw
+                            // rects, so taps always land on the drawn boxes.
+                            val transform = ImageTransform.fit(
+                                Size(screenSize.first.toFloat(), screenSize.second.toFloat()),
+                                Size(size.width.toFloat(), size.height.toFloat())
+                            )
+                            val imagePoint = transform.toImage(offset)
 
-                            // Check if tap is inside any polygon's bounding box
                             tappedIndex.intValue = boundingBoxes.indexOfFirst { (_, rect) ->
-                                offset.x in (rect.left * scaleX)..(rect.right * scaleX) &&
-                                        offset.y in (rect.top * scaleY)..(rect.bottom * scaleY)
+                                imagePoint.x in rect.left.toFloat()..rect.right.toFloat() &&
+                                        imagePoint.y in rect.top.toFloat()..rect.bottom.toFloat()
                             }
                             if (tappedIndex.intValue != -1 && !showPopup) {
                                 selectedIndices.clear()
@@ -312,31 +311,6 @@ fun WordPolygonsOverlay(
     }
 }
 
-fun saveImageToGallery(context: Context, bitmap: Bitmap, filename: String?) {
-    val values = ContentValues()
-    values.put(MediaStore.Images.Media.DISPLAY_NAME, filename)
-    values.put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg") // or "image/png"
-
-    val resolver: ContentResolver = context.contentResolver
-    val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, values)
-
-    if (uri != null) {
-        try {
-            resolver.openOutputStream(uri).use { fos ->
-                if (fos != null) {
-                    bitmap.compress(Bitmap.CompressFormat.JPEG, 90, fos) // Adjust quality as needed
-                    Toast.makeText(context, "Image saved to gallery!", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (e: Exception) {
-            logger.ERROR("Failed to save image to gallery: ${e.message}")
-            Toast.makeText(context, "Error saving image", Toast.LENGTH_SHORT).show()
-        }
-    } else {
-        Toast.makeText(context, "Failed to create new MediaStore entry", Toast.LENGTH_SHORT).show()
-    }
-}
-
 @OptIn(ExperimentalComposeUiApi::class, ExperimentalComposeApi::class)
 @SuppressLint("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
@@ -403,10 +377,4 @@ fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
             )
         }
     }
-}
-
-//@Preview
-@Composable
-fun PreviewOCRScreen() {
-    OCRScreen(onClicked = {}, inputImage = createBitmap(100, 100))
 }
