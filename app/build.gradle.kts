@@ -31,6 +31,22 @@ android {
         ndk {
             abiFilters.add("arm64-v8a")
         }
+        // Lets test/androidTest variants resolve without picking a flavor
+        missingDimensionStrategy("accel", "standard")
+    }
+
+    // standard: plain onnxruntime-android + NNAPI (~25 MB native libs)
+    // qnn:      onnxruntime-android-qnn + Hexagon HTP (~210 MB native libs)
+    flavorDimensions += "accel"
+    productFlavors {
+        create("standard") {
+            dimension = "accel"
+        }
+        create("qnn") {
+            dimension = "accel"
+            applicationIdSuffix = ".qnn"
+            versionNameSuffix = "-qnn"
+        }
     }
 
     sourceSets {
@@ -43,12 +59,15 @@ android {
     buildFeatures {
         compose = true
     }
+    // Must match the NDK provisioned in CI (r27d = 27.2.12479018) so
+    // stripReleaseDebugSymbols can find the strip tool.
+    ndkVersion = "27.2.12479018"
     signingConfigs {
         create("release") {
             val storePass = signingProp("storePassword", "KEY_STORE_PASSWORD")
             val keyPass = signingProp("keyPassword", "KEY_PASSWORD")
             if (storePass != null && keyPass != null) {
-                storeFile = signingProp("storeFile", "KEY_STORE_FILE")?.let { file(it) }
+                storeFile = file(signingProp("storeFile", "KEY_STORE_FILE") ?: "../release-key.jks")
                 storePassword = storePass
                 keyAlias = signingProp("keyAlias", "ALIAS")
                 keyPassword = keyPass
@@ -73,9 +92,9 @@ android {
         sourceCompatibility = JavaVersion.VERSION_21
         targetCompatibility = JavaVersion.VERSION_21
     }
-    kotlinOptions {
-        jvmTarget = "21"
-    }
+//    kotlinOptions {
+//        jvmTarget = "21"
+//    }
     buildFeatures {
         viewBinding = true
     }
@@ -104,10 +123,10 @@ dependencies {
 
     implementation("org.opencv:opencv:4.12.0")
     implementation("com.github.micycle1:Clipper2-java:1.3.1")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
-    implementation("org.apache.lucene:lucene-analyzers-kuromoji:8.11.0")
-    implementation("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.29.0")
+    implementation("org.apache.lucene:lucene-analyzers-kuromoji:8.11.4")
+    "standardImplementation"("com.microsoft.onnxruntime:onnxruntime-android:1.29.0")
+    "qnnImplementation"("com.microsoft.onnxruntime:onnxruntime-android-qnn:1.29.0")
     //noinspection Aligned16KB
     implementation("ai.djl.huggingface:tokenizers:0.36.0") // HuggingFace tokenizers
     //noinspection Aligned16KB
@@ -117,13 +136,13 @@ dependencies {
 //    debugImplementation("com.squareup.leakcanary:leakcanary-android:2.14")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.xerial:sqlite-jdbc:3.42.0.0") // Use latest version
+    testImplementation("org.xerial:sqlite-jdbc:3.53.4.0")
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.1")
+    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.10")
 //    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.1:models")
 //    testImplementation("edu.stanford.nlp:stanford-corenlp:4.5.1:pipeline")
     testImplementation("org.openpnp:opencv:4.9.0-0")
-    testImplementation("ai.djl.huggingface:tokenizers:0.33.0") // HuggingFace tokenizers
-    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.22.0")
+    testImplementation("ai.djl.huggingface:tokenizers:0.36.0") // HuggingFace tokenizers
+    testImplementation("com.microsoft.onnxruntime:onnxruntime:1.29.0")
     testImplementation(kotlin("test"))
 }

@@ -39,7 +39,8 @@ data class Tag(
     indices = [Index(value = ["id"], name = "idx_words_id")]
 )
 data class Word(
-    @PrimaryKey val id: String
+    @PrimaryKey val id: String,
+    val common: Int = 0
 )
 
 // Kanji.kt
@@ -51,7 +52,8 @@ data class Word(
         childColumns = ["word_id"],
         onDelete = CASCADE
     )],
-    indices = [Index(value = ["word_id"], name = "idx_kanji_word_id")]
+    indices = [Index(value = ["word_id"], name = "idx_kanji_word_id"),
+               Index(value = ["text"], name = "idx_kanji_text")]
 )
 data class Kanji(
     @PrimaryKey(autoGenerate = true)
@@ -71,7 +73,8 @@ data class Kanji(
         childColumns = ["word_id"],
         onDelete = CASCADE
     )],
-    indices = [Index(value = ["word_id"], name = "idx_kana_word_id")]
+    indices = [Index(value = ["word_id"], name = "idx_kana_word_id"),
+               Index(value = ["text"], name = "idx_kana_text")]
 )
 data class Kana(
     @PrimaryKey(autoGenerate = true)

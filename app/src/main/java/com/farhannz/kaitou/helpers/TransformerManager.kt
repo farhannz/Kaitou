@@ -9,10 +9,6 @@ import android.util.Log
 import com.farhannz.kaitou.domain.ModelInput
 import com.farhannz.kaitou.impl.onnxruntime.EmbeddingModel
 import kotlinx.serialization.json.Json
-import okhttp3.MediaType.Companion.toMediaType
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -24,8 +20,6 @@ object TransformerManager {
     private val logger = Logger(LOG_TAG!!)
     private lateinit var tokenizer: HuggingFaceTokenizer
     private lateinit var model: EmbeddingModel
-    private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
-    private val client = OkHttpClient()
     private val json = Json { ignoreUnknownKeys = true }
     fun copyAssetToCache(context: Context, assetFolder: String = "", assetName: String): String {
         val assetSubPath = "${assetFolder}/$assetName" // use relative asset path
@@ -42,27 +36,7 @@ object TransformerManager {
         }
         return outFile.absolutePath
     }
-
-    fun sendEmbedRequest(text: String): FloatArray {
-        val postBody = """
-        {
-            "text": "$text"
-        }
-        """.trimIndent()
-
-
-        val request = Request.Builder()
-            .url("http://localhost:8123/embed")
-            .post(postBody.toRequestBody(JSON_MEDIA_TYPE))
-            .build()
-
-        client.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) throw IOException("Unexpected code $response")
-
-//            println(response.body!!.string())
-            return json.decodeFromString(response.body!!.string())
-        }
-    }
+    
 
     fun tokenizePair(first: String, second: String): Encoding {
         val encoded = tokenizer.encode(first, second)

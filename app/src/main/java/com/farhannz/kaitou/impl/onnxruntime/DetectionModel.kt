@@ -29,28 +29,7 @@ class DetectionModel(private val modelPath: String) : OnnxModel<Mat, GroupedResu
     init {
         val sessionOptions = OrtSession.SessionOptions()
         println(OrtEnvironment.getAvailableProviders())
-//        try {
-//            sessionOptions.addNnapi()
-//            println("NNAPI is added")
-//        } catch (e: Exception) {
-//            println("NNAPI is not available, ${e.message}")
-//        }
-
-        try {
-            val providerOptions = mapOf(Pair("backend_type", "htp"))
-            sessionOptions.addQnn(providerOptions)
-            println("QNN is added")
-        } catch (e: Exception) {
-            println("QNN is not available, ${e.message}")
-            try {
-                val providerOptions = mapOf(Pair("intra_op_num_threads", "1"))
-                sessionOptions.addXnnpack(providerOptions)
-                sessionOptions.setIntraOpNumThreads(1)
-                println("addXnnpack is added")
-            } catch (e: Exception) {
-                println("addXnnpack is not available, ${e.message}")
-            }
-        }
+        applyHardwareAcceleration(sessionOptions)
         session = env.createSession(modelPath, sessionOptions)
     }
 
