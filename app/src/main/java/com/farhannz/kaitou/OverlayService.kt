@@ -63,6 +63,9 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     companion object {
         const val OVERLAY_NOTIFICATION_ID = 1770
+
+        /** Observed by the landing page; same process, so a Compose state is enough. */
+        val isRunning = mutableStateOf(false)
     }
 
     private val overlayBroadcastReceiver = object : BroadcastReceiver() {
@@ -98,12 +101,26 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
 
     private fun captureScreenshot() {
         isButtonVisibleState.value = false
+        val (resultCode, dataIntent) = MediaProjectionPermissionStore.load(this)
+            ?: (Int.MIN_VALUE to null)
+        if (resultCode == Int.MIN_VALUE || dataIntent == null) {
+            // No valid consent (fresh install handoff, reboot, or stale token).
+            // The trampoline hosts the consent dialog over the user's current
+            // app, then resumes this pending capture with START_AND_CAPTURE.
+            logger.INFO("No valid capture consent, launching ConsentRequestActivity")
+            isButtonVisibleState.value = true
+            val reconsent = Intent(this, ConsentRequestActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            }
+            startActivity(reconsent)
+            return
+        }
         logger.INFO("Requesting screenshot capture")
-        logger.DEBUG("${MainActivity.MediaProjectionPermissionStore.resultCode} - ${MainActivity.MediaProjectionPermissionStore.dataIntent}")
+        logger.DEBUG("$resultCode - $dataIntent")
         val intent = Intent(this@OverlayService, ScreenshotServiceRework::class.java).also {
             it.action = "CAPTURE_SCREENSHOT"
-            it.putExtra("resultCode", MainActivity.MediaProjectionPermissionStore.resultCode)
-            it.putExtra("data", MainActivity.MediaProjectionPermissionStore.dataIntent)
+            it.putExtra("resultCode", resultCode)
+            it.putExtra("data", dataIntent)
         }
         startService(intent)
         scope.launch {
@@ -168,6 +185,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
             )
         }
         lifecycleRegistry.currentState = Lifecycle.State.STARTED
+        isRunning.value = true
         windowManager.addView(composeView, layoutParams)
     }
 
@@ -187,6 +205,7 @@ class OverlayService() : Service(), SavedStateRegistryOwner {
     }
 
     override fun onDestroy() {
+        isRunning.value = false
         removeOverlay()
         if (::composeView.isInitialized) {
             windowManager.removeView(composeView)

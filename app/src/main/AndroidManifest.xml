@@ -1,37 +1,54 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
-          package="com.farhannz.kaitou">
+    package="com.farhannz.kaitou">
 
-    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION"/>
-    <uses-permission android:name="android.permission.INTERNET"/>
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PROJECTION" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <application
-            android:name=".MainApplication"
-            android:label="Kaitou"
-            android:theme="@style/TransparentTheme"
-            android:usesCleartextTraffic="true"
-            android:icon="@mipmap/ic_launcher"
-    >
-        <profileable android:shell="true"/>
-        <activity android:name=".MainActivity"
-                  android:exported="true">
+        android:name=".MainApplication"
+        android:label="Kaitou"
+        android:theme="@style/TransparentTheme"
+        android:usesCleartextTraffic="true"
+        android:icon="@mipmap/ic_launcher">
+        <profileable android:shell="true" />
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTask">
             <intent-filter>
-                <action android:name="android.intent.action.MAIN"/>
-                <category android:name="android.intent.category.LAUNCHER"/>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
-        <activity android:name=".OverlayHostActivity"
-                  android:windowSoftInputMode="adjustResize"
-                  android:exported="false"
-                  android:excludeFromRecents="true"
-                  android:taskAffinity=""
-                  android:launchMode="singleInstance"
-        />
-        <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse"/>
-        <service android:name=".ScreenshotServiceRework" android:exported="false"
-                 android:foregroundServiceType="mediaProjection"/>
+        <activity
+            android:name=".ConsentRequestActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:launchMode="singleTask" />
+        <activity
+            android:name=".OverlayHostActivity"
+            android:windowSoftInputMode="adjustResize"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleInstance" />
+
+        <service
+            android:name=".OverlayService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse" />
+        <service
+            android:name=".ScreenshotServiceRework"
+            android:exported="false"
+            android:foregroundServiceType="mediaProjection" />
 
     </application>
 </manifest>

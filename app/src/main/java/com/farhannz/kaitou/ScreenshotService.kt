@@ -67,11 +67,27 @@ class ScreenshotServiceRework : Service() {
         if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
             rc = captured["resultCode"] as Int
             dataIntent = captured["data"] as Intent
-            mediaProjection =
-                (applicationContext.getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
-                    rc,
-                    dataIntent!!
-                )
+            try {
+                mediaProjection =
+                    (applicationContext.getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
+                        rc,
+                        dataIntent!!
+                    )
+            } catch (e: SecurityException) {
+                // Android 14+ treats the consent token as single-use per
+                // foreground service start; the stored consent is stale.
+                logger.ERROR("MediaProjection consent rejected: ${e.message}")
+                MediaProjectionPermissionStore.clear(this)
+                rc = Int.MIN_VALUE
+                dataIntent = null
+                // Trampoline hosts the consent dialog over the user's current
+                // app, then resumes the capture via START_AND_CAPTURE.
+                val reconsent = Intent(this, ConsentRequestActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(reconsent)
+                return
+            }
             logger.DEBUG("MediaProjection Permission Granted")
             val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
             val bounds = windowManager.maximumWindowMetrics.bounds
