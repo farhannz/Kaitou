@@ -4,6 +4,7 @@ import ai.onnxruntime.OnnxTensor
 import ai.onnxruntime.OrtEnvironment
 import ai.onnxruntime.OrtSession
 import com.farhannz.kaitou.domain.OnnxModel
+import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.impl.utils.CTCLabelDecoder
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -19,6 +20,7 @@ import kotlin.math.min
 class RecognitionModel(
     private val modelPath: String, private val characterList: List<String>
 ) : OnnxModel<Mat, String> {
+    private val logger = Logger(RecognitionModel::class.simpleName!!)
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val labelDecoder: CTCLabelDecoder
@@ -32,12 +34,18 @@ class RecognitionModel(
     }
 
     override fun predict(input: Mat): String {
+        fun ms(from: Long) = (System.nanoTime() - from) / 1_000_000.0
+
+        val start = System.nanoTime()
         val height = inputShape[2].toInt()
         val width = inputShape[3].toInt()
         val channels = inputShape[1].toInt()
 
+        var t = System.nanoTime()
         val preprocessed = preprocess(input)
+        val preprocessMs = ms(t)
 
+        t = System.nanoTime()
         val batchData = FloatArray(channels * height * width)
         val tempData = FloatArray(channels)
 
@@ -50,14 +58,31 @@ class RecognitionModel(
             }
         }
         preprocessed.release()
+        val toChwMs = ms(t)
 
+        t = System.nanoTime()
         val inputTensor = OnnxTensor.createTensor(env, FloatBuffer.wrap(batchData), inputShape)
+        val tensorMs = ms(t)
 
         val inputName = session.inputNames.first()
+        t = System.nanoTime()
         val results = session.run(mapOf(inputName to inputTensor))
+        val inferMs = ms(t)
+
+        t = System.nanoTime()
         val output = results[0].value as Array<Array<FloatArray>>
-        println("Output size : ${output.size}")
-        return decode(output[0])
+        results.close()
+        val outputMs = ms(t)
+
+        t = System.nanoTime()
+        val text = decode(output[0])
+        val decodeMs = ms(t)
+        val total = ms(start)
+        logger.INFO(
+            "[latency] rec: preprocess=$preprocessMs toCHW=$toChwMs tensor=$tensorMs infer=$inferMs " +
+                    "output=$outputMs decode=$decodeMs | total=$total ms"
+        )
+        return text
     }
 
     fun predictBatch(inputs: List<Mat>): List<String> {

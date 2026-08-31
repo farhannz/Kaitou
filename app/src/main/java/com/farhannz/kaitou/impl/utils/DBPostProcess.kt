@@ -138,8 +138,6 @@ class DBPostProcess(
     }
 
     fun process(pred: Mat, useDilation: Boolean, resizedInfo: DoubleArray): GroupedResult {
-        val minMax = Core.minMaxLoc(pred)
-//        logger.DEBUG("Min: ${minMax.minVal}, Max: ${minMax.maxVal}")
         val (srcW, srcH, scale, padX, padY) = resizedInfo
 
 //        logger.DEBUG("Original size (WxH) - $srcW x $srcH")
@@ -336,6 +334,14 @@ class DBPostProcess(
         return Pair(sortedBox, min(rect.size.width, rect.size.height))
     }
 
+    /**
+     * Mean of `bitmap` over the pixels inside `box` (mask>0). Replaces the old
+     * per-pixel Mat.get() loop — one JNI call instead of O(area) of them.
+     */
+    private fun maskedBoxScore(bitmap: Mat, mask: Mat, roi: org.opencv.core.Rect): Double {
+        return Core.mean(bitmap.submat(roi), mask).`val`[0]
+    }
+
     private fun boxScoreFast(bitmap: Mat, box: Array<Point>): Double {
         val h = bitmap.rows()
         val w = bitmap.cols()
@@ -344,24 +350,19 @@ class DBPostProcess(
         val ymin = max(0, min(box.minOf { it.y }.toInt(), h - 1))
         val ymax = max(0, min(box.maxOf { it.y }.toInt(), h - 1))
 
-        val mask = Mat.zeros(ymax - ymin + 1, xmax - xmin + 1, CvType.CV_8UC1)
+        val roi = org.opencv.core.Rect(xmin, ymin, xmax - xmin + 1, ymax - ymin + 1)
+        if (roi.width <= 0 || roi.height <= 0) return 0.0
+
+        val mask = Mat.zeros(roi.height, roi.width, CvType.CV_8UC1)
         val adjustedBox = box.map { Point(it.x - xmin, it.y - ymin) }
         val adjustedPoints =
             adjustedBox.map { Point(it.x.toInt().toDouble(), it.y.toInt().toDouble()) }
         val mat2f = listOf(MatOfPoint(*adjustedPoints.toTypedArray()))
         Imgproc.fillPoly(mask, mat2f, Scalar(1.0))
 
-        var sum = 0.0
-        var count = 0
-        for (y in ymin..ymax) {
-            for (x in xmin..xmax) {
-                if (mask.get(y - ymin, x - xmin)[0] > 0) {
-                    sum += bitmap.get(y, x)[0]
-                    count++
-                }
-            }
-        }
-        return sum / count
+        val score = maskedBoxScore(bitmap, mask, roi)
+        mask.release()
+        return score
     }
 
     private fun boxScoreSlow(bitmap: Mat, contour: MatOfPoint): Double {
@@ -373,23 +374,18 @@ class DBPostProcess(
         val ymin = max(0, min(points.minOf { it.y }.toInt(), h - 1))
         val ymax = max(0, min(points.maxOf { it.y }.toInt(), h - 1))
 
-        val mask = Mat.zeros(ymax - ymin + 1, xmax - xmin + 1, CvType.CV_8UC1)
+        val roi = org.opencv.core.Rect(xmin, ymin, xmax - xmin + 1, ymax - ymin + 1)
+        if (roi.width <= 0 || roi.height <= 0) return 0.0
+
+        val mask = Mat.zeros(roi.height, roi.width, CvType.CV_8UC1)
         val adjustedContour = points.map { Point(it.x - xmin, it.y - ymin) }
         val adjustedPoints =
             adjustedContour.map { Point(it.x.toInt().toDouble(), it.y.toInt().toDouble()) }
         val mat2f = listOf(MatOfPoint(*adjustedPoints.toTypedArray()))
         Imgproc.fillPoly(mask, mat2f, Scalar(1.0))
 
-        var sum = 0.0
-        var count = 0
-        for (y in ymin..ymax) {
-            for (x in xmin..xmax) {
-                if (mask.get(y - ymin, x - xmin)[0] > 0) {
-                    sum += bitmap.get(y, x)[0]
-                    count++
-                }
-            }
-        }
-        return sum / count
+        val score = maskedBoxScore(bitmap, mask, roi)
+        mask.release()
+        return score
     }
 }

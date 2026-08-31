@@ -9,6 +9,7 @@ import com.farhannz.kaitou.domain.GroupedResult
 import com.farhannz.kaitou.domain.OnnxModel
 import com.farhannz.kaitou.domain.Point as DomainPoint
 import org.opencv.core.Point as CvPoint
+import com.farhannz.kaitou.helpers.Logger
 import com.farhannz.kaitou.impl.utils.DBPostProcess
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -17,14 +18,24 @@ import org.opencv.core.Rect
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import java.nio.FloatBuffer
 import kotlin.math.min
 
 class DetectionModel(private val modelPath: String) : OnnxModel<Mat, GroupedResult> {
+    private val logger = Logger(DetectionModel::class.simpleName!!)
     private val env: OrtEnvironment = OrtEnvironment.getEnvironment()
     private val session: OrtSession
     private val postprocess = DBPostProcess(boxThresh = 0.6, thresh = 0.25, unclipRatio = 2.0)
     private val inputShape = intArrayOf(3, 960, 960)
+
+    // Reusable CHW input storage. Direct buffer => ORT reads it without a copy.
+    private val chwBuffer: FloatBuffer = ByteBuffer
+        .allocateDirect(inputShape[0] * inputShape[1] * inputShape[2] * 4)
+        .order(ByteOrder.nativeOrder())
+        .asFloatBuffer()
+    private val rgbBytes = ByteArray(inputShape[0] * inputShape[1] * inputShape[2])
 
     init {
         val sessionOptions = OrtSession.SessionOptions()
@@ -39,8 +50,6 @@ class DetectionModel(private val modelPath: String) : OnnxModel<Mat, GroupedResu
         targetHeight: Int = 960,
         padColor: Scalar = Scalar(255.0, 255.0, 255.0)  // White in BGR
     ): Pair<Mat, DoubleArray> {
-        val start = System.nanoTime()
-
         val scale = min(
             targetWidth.toDouble() / mat.cols(),
             targetHeight.toDouble() / mat.rows()
@@ -72,12 +81,6 @@ class DetectionModel(private val modelPath: String) : OnnxModel<Mat, GroupedResu
         val padXf = padX.toDouble()
         val padYf = padY.toDouble()
 
-        val elapsed = (System.nanoTime() - start) / 1_000_000.0
-        println(
-            "[latency] letterboxMat: %.2f ms, ${mat.cols()}x${mat.rows()} -> ${targetWidth}x${targetHeight}".format(
-                elapsed
-            )
-        )
         Imgproc.cvtColor(padded, padded, Imgproc.COLOR_BGR2RGB)
         // Scale + pad info, useful for restoring box coords later
         return padded to doubleArrayOf(
@@ -96,44 +99,78 @@ class DetectionModel(private val modelPath: String) : OnnxModel<Mat, GroupedResu
     }
 
     override fun predict(input: Mat): GroupedResult {
+        fun ms(from: Long) = (System.nanoTime() - from) / 1_000_000.0
+
         val start = System.nanoTime()
+
+        var t = System.nanoTime()
         val (preprocessed, resizedInfo) = preprocess(input)
+        val letterboxMs = ms(t)
+
         val c = inputShape[0]
         val h = inputShape[1]
         val w = inputShape[2]
 
-        val floatInput = if (preprocessed.type() != CvType.CV_32FC3) {
-            val converted = Mat()
-            preprocessed.convertTo(converted, CvType.CV_32F, 1.0 / 255.0)
-            converted
+        t = System.nanoTime()
+        val inputTensor: OnnxTensor
+        if (preprocessed.type() == CvType.CV_8UC3) {
+            // Fast path: one interleaved read of the 8-bit RGB image, then
+            // deinterleave + scale straight into the reused direct buffer.
+            // (Replaces convertTo + Core.split + 3 channel copies.)
+            preprocessed.get(0, 0, rgbBytes)
+            val hw = h * w
+            for (i in 0 until hw) {
+                chwBuffer.put(i, (rgbBytes[3 * i].toInt() and 0xFF) * (1f / 255f))
+                chwBuffer.put(hw + i, (rgbBytes[3 * i + 1].toInt() and 0xFF) * (1f / 255f))
+                chwBuffer.put(2 * hw + i, (rgbBytes[3 * i + 2].toInt() and 0xFF) * (1f / 255f))
+            }
+            chwBuffer.rewind()
+            inputTensor = OnnxTensor.createTensor(
+                env, chwBuffer, longArrayOf(1, c.toLong(), h.toLong(), w.toLong())
+            )
         } else {
-            preprocessed
+            // Generic fallback for unexpected Mat types (e.g. already fp32)
+            val floatInput = if (preprocessed.type() != CvType.CV_32FC3) {
+                val converted = Mat()
+                preprocessed.convertTo(converted, CvType.CV_32F, 1.0 / 255.0)
+                converted
+            } else {
+                preprocessed
+            }
+
+            val channels = mutableListOf<Mat>()
+            Core.split(floatInput, channels)
+
+            val floatBuffer = FloatBuffer.allocate(1 * c * h * w)
+            for (channel in channels) {
+                val channelData = FloatArray(h * w)
+                channel.get(0, 0, channelData)
+                floatBuffer.put(channelData)
+            }
+
+            if (floatInput !== preprocessed) {
+                floatInput.release()
+            }
+            channels.forEach { it.release() }
+
+            floatBuffer.rewind()
+            inputTensor = OnnxTensor.createTensor(
+                env, floatBuffer, longArrayOf(1, c.toLong(), h.toLong(), w.toLong())
+            )
         }
-
-        val channels = mutableListOf<Mat>()
-        Core.split(floatInput, channels)
-
-        val floatBuffer = FloatBuffer.allocate(1 * c * h * w)
-        for (channel in channels) {
-            val channelData = FloatArray(h * w)
-            channel.get(0, 0, channelData)
-            floatBuffer.put(channelData)
-        }
-
-        if (floatInput !== preprocessed) {
-            floatInput.release()
-        }
-        channels.forEach { it.release() }
-
-        floatBuffer.rewind()
-
-        val shape = longArrayOf(1, c.toLong(), h.toLong(), w.toLong())
-        val inputTensor = OnnxTensor.createTensor(env, floatBuffer, shape)
+        val toChwMs = ms(t)
 
         val inputName = session.inputNames.first()
+        t = System.nanoTime()
         val results = session.run(mapOf(inputName to inputTensor))
+        val inferMs = ms(t)
+        inputTensor.close()
+
+        t = System.nanoTime()
         val resultMat = onnxTensorToMat(results.get(0) as OnnxTensor)
+        results.close()
         val postprocessed = postprocess.process(resultMat, true, resizedInfo)
+        val postMs = ms(t)
 
         // Convert from data.models.GroupedResult to domain.GroupedResult
         val domainDetections = DetectionResult(
@@ -149,11 +186,11 @@ class DetectionModel(private val modelPath: String) : OnnxModel<Mat, GroupedResu
                 memberBoxIndices = indices
             )
         }
-        val elapsed = (System.nanoTime() - start) / 1_000_000.0
-        println(
-            "[latency] end2end: %.2f ms".format(
-                elapsed
-            )
+        val totalMs = ms(start)
+        val size = domainDetections.boxes.size
+        logger.INFO(
+            "[latency] det: letterbox=$letterboxMs toCHW=$toChwMs infer=$inferMs " +
+                    "post=$postMs | total=$totalMs (nBoxes=$size)"
         )
         return GroupedResult(domainDetections, domainGrouped)
     }
