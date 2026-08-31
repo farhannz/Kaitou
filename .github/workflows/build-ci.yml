@@ -1,0 +1,87 @@
+name: Build Application
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - master
+      - nightly
+    paths-ignore:
+      - '**/README.md'
+
+env:
+  ANDROID_NDK_VERSION: r27d        # zip artifact name from Google
+  NDK_VERSION: 27.2.12479018       # version AGP expects on disk (r27d == 27.2.12479018)
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    environment: action-release
+    steps:
+      - name: Checkout self
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.SIGNING_KEY }}" | base64 -d > ${{ github.workspace }}/release-key.jks
+          sha256sum ${{ github.workspace }}/release-key.jks
+
+      - name: Cache Android NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: android-ndk
+          key: android-ndk-${{ env.ANDROID_NDK_VERSION }}
+
+      - name: Download Android NDK if not cached
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          wget -q https://dl.google.com/android/repository/android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          unzip -q android-ndk-${ANDROID_NDK_VERSION}-linux.zip
+          mv android-ndk-${ANDROID_NDK_VERSION} android-ndk
+
+      # AGP resolves ndkVersion against <sdk>/ndk/<version>; register the
+      # downloaded NDK there so stripReleaseDebugSymbols can run.
+      - name: Register NDK with SDK
+        run: |
+          mkdir -p "$ANDROID_HOME/ndk"
+          mv android-ndk "$ANDROID_HOME/ndk/${NDK_VERSION}"
+          ls "$ANDROID_HOME/ndk"
+
+      - name: Build Release APKs (standard + qnn)
+        env:
+          KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+          ALIAS: ${{ secrets.ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          chmod +x ./gradlew
+          ./gradlew assembleStandardRelease assembleQnnRelease
+
+      - name: Rename APKs for release
+        run: |
+          cp app/build/outputs/apk/standard/release/app-standard-release.apk kaitou-standard-nightly.apk
+          cp app/build/outputs/apk/qnn/release/app-qnn-release.apk kaitou-qnn-nightly.apk
+          ls -la kaitou-*-nightly.apk
+
+      - name: Upload release APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: kaitou-nightly-apks
+          path: |
+            app/build/outputs/apk/standard/release/app-standard-release.apk
+            app/build/outputs/apk/qnn/release/app-qnn-release.apk
+
+      - name: Create nightly release
+        if: github.ref == 'refs/heads/nightly'
+        uses: pyTooling/Actions/releaser@r0
+        with:
+          tag: nightly-release
+          token: ${{ secrets.GITHUB_TOKEN }}
+          files: |
+            kaitou-standard-nightly.apk
+            kaitou-qnn-nightly.apk

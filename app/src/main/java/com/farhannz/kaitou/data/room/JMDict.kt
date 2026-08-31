@@ -16,20 +16,24 @@ import com.farhannz.kaitou.data.dao.*
         Kanji::class,
         Kana::class,
         Sense::class,
-        Gloss::class
+        Gloss::class,
+        Example::class,
+        ExampleSentence::class
     ],
     exportSchema = false,
     version = 1
 )
 abstract class JmdictDatabase : RoomDatabase() {
     abstract fun dictionaryDao(): DictionaryDao
-        companion object {
+    abstract fun wordDao(): WordGlossDao
+
+    companion object {
         fun getDatabase(context: Context): JmdictDatabase {
             return Room.databaseBuilder(
                 context.applicationContext,
                 JmdictDatabase::class.java,
                 "jmdict"
-            ).createFromAsset("jmdict/jmdict_normalized.db")
+            ).createFromAsset("jmdict/jmdict-with-example-en-jp.db")
                 .fallbackToDestructiveMigration(false)
                 .build()
         }

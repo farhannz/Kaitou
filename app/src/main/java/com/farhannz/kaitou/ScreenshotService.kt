@@ -1,78 +1,113 @@
 package com.farhannz.kaitou
 
 import android.app.Activity.RESULT_OK
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.graphics.Bitmap
+import android.content.IntentFilter
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.hardware.display.DisplayManager
 import android.hardware.display.VirtualDisplay
-import android.media.Image
 import android.media.ImageReader
 import android.media.projection.MediaProjection
 import android.media.projection.MediaProjectionManager
-import android.os.Binder
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
 import android.util.Log
-import android.view.WindowInsets
+import android.view.Display
 import android.view.WindowManager
 import androidx.annotation.RequiresApi
-import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.app.NotificationCompat
-import androidx.core.graphics.createBitmap
 import com.farhannz.kaitou.helpers.Logger
-import com.farhannz.kaitou.helpers.NotificationHelper
+import com.farhannz.kaitou.impl.ScreenshotStore
+import com.farhannz.kaitou.presentation.utils.toBitmap
+
+class ScreenshotServiceRework : Service() {
 
 
-fun Image.toBitmap(): Bitmap {
-    try {
-        val plane = planes[0]
-        val buffer = plane.buffer
-        val pixelStride = plane.pixelStride
-        val rowStride = plane.rowStride
-        val rowPadding = rowStride - pixelStride * width
-
-        return createBitmap(width + rowPadding / pixelStride, height).apply {
-            copyPixelsFromBuffer(buffer)
-        }
-    } catch (e: Exception) {
-        throw RuntimeException("Failed to convert image to bitmap", e)
-    }
-}
-
-class ScreenshotServiceRework : Service () {
-
-
-    val LOG_TAG = this::class.simpleName;
+    private val LOG_TAG = ScreenshotServiceRework::class.simpleName
     private val logger = Logger(LOG_TAG!!)
-    var rc : Int = Int.MIN_VALUE
-    var dataIntent:Intent? = null
-    private val binder = LocalBinder()
-
-    private var mediaProjectionManager: MediaProjectionManager? = null
-    private var mediaProjection : MediaProjection? = null
-    private var imageReader : ImageReader? = null
+    private var mediaProjection: MediaProjection? = null
+    private var imageReader: ImageReader? = null
     private var virtualDisplay: VirtualDisplay? = null
 
-//    Callback
-    var onScreenshotTaken: ((Bitmap) -> Unit)? = null
+    var rc: Int = Int.MIN_VALUE
+    var dataIntent: Intent? = null
 
-    inner class LocalBinder : Binder() {
-        fun getService(): ScreenshotServiceRework = this@ScreenshotServiceRework
+    // Real display resolution. Must come from maximumWindowMetrics, NOT
+    // resources.displayMetrics: the latter is the app-usable window size and
+    // varies with nav-bar mode, display zoom, cutouts and windowing. Sizing the
+    // VirtualDisplay/ImageReader from it would silently scale the mirrored
+    // frame and skew every downstream OCR coordinate.
+    private var displayWidth = 0
+    private var displayHeight = 0
+
+    private val shutdownReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == "SHUTDOWN_SERVICES") {
+                stopForeground(STOP_FOREGROUND_REMOVE)
+                stopSelf()
+            }
+        }
     }
 
-    override fun onBind(intent: Intent?): IBinder {
-        return binder
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private fun startScreenshotService(intent: Intent) {
+        val captured = mapOf(
+            "resultCode" to intent.getIntExtra("resultCode", Int.MIN_VALUE),
+            "data" to intent.getParcelableExtra("data", Intent::class.java)
+        )
+        if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
+            rc = captured["resultCode"] as Int
+            dataIntent = captured["data"] as Intent
+            try {
+                mediaProjection =
+                    (applicationContext.getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(
+                        rc,
+                        dataIntent!!
+                    )
+            } catch (e: SecurityException) {
+                // Android 14+ treats the consent token as single-use per
+                // foreground service start; the stored consent is stale.
+                logger.ERROR("MediaProjection consent rejected: ${e.message}")
+                MediaProjectionPermissionStore.clear(this)
+                rc = Int.MIN_VALUE
+                dataIntent = null
+                // Trampoline hosts the consent dialog over the user's current
+                // app, then resumes the capture via START_AND_CAPTURE.
+                val reconsent = Intent(this, ConsentRequestActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                }
+                startActivity(reconsent)
+                return
+            }
+            logger.DEBUG("MediaProjection Permission Granted")
+            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            displayWidth = bounds.width()
+            displayHeight = bounds.height()
+            val density = resources.displayMetrics.densityDpi
+            virtualDisplay = mediaProjection?.createVirtualDisplay(
+                "SingleShot",
+                displayWidth,
+                displayHeight,
+                density,
+                DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
+                imageReader?.surface,
+                null,
+                null
+            )
+        }
     }
+
+    override fun onBind(intent: Intent?): IBinder? = null
 
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -80,69 +115,30 @@ class ScreenshotServiceRework : Service () {
         Log.i(LOG_TAG, "Received Request")
         when (intent?.action) {
             "CAPTURE_SCREENSHOT" -> {
-//                Empty Only for binding intent
-//                logger.INFO("Screenshot Captured")
-//                requestCapture()
+                requestCapture()
             }
+
             "START_SERVICE" -> {
-                val captured = mapOf(
-                    "resultCode" to intent.getIntExtra("resultCode", Int.MIN_VALUE),
-                    "data" to intent.getParcelableExtra("data", Intent::class.java)
-                )
-                if (captured["resultCode"] == RESULT_OK && captured["data"] != null) {
-                    rc = captured["resultCode"] as Int
-                    dataIntent = captured["data"] as Intent
-                    mediaProjection = (getSystemService(MEDIA_PROJECTION_SERVICE) as MediaProjectionManager).getMediaProjection(rc, dataIntent!!)
-                    logger.DEBUG("MediaProjection Permission Granted")
-                    val metrics = resources.displayMetrics
-                    val width = metrics.widthPixels
-                    val height = metrics.heightPixels
-                    val density = metrics.densityDpi
-                    virtualDisplay = mediaProjection?.createVirtualDisplay(
-                        "SingleShot",
-                        width,
-                        height,
-                        density,
-                        DisplayManager.VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR,
-                        imageReader?.surface,
-                        null,
-                        null
-                    )
-                }
+                startScreenshotService(intent)
+            }
+
+            "START_AND_CAPTURE" -> {
+                startScreenshotService(intent)
+                requestCapture()
             }
         }
-        return START_STICKY
-    }
-
-    fun excludeWindowInsets(bitmap: Bitmap): Bitmap {
-        val windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        val windowMetrics = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            windowManager.currentWindowMetrics
-        } else {
-            return bitmap // Can't get insets below API 30 easily
-        }
-
-        val insets = windowMetrics.windowInsets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars())
-
-        val cropTop = insets.top
-        val cropBottom = insets.bottom
-        val cropLeft = insets.left
-        val cropRight = insets.right
-        logger.DEBUG(insets.toString())
-
-        val cropWidth = bitmap.width - cropLeft - cropRight
-        val cropHeight = bitmap.height - cropTop - cropBottom
-
-        return Bitmap.createBitmap(bitmap, cropLeft, cropTop, cropWidth, cropHeight)
+        return START_NOT_STICKY
     }
 
     fun prepareScreenshot() {
         logger.DEBUG("rc = $rc, dataIntent = $dataIntent")
-        val metrics = resources.displayMetrics
-        val width = metrics.widthPixels
-        val height = metrics.heightPixels
-        val density = metrics.densityDpi
-        imageReader = ImageReader.newInstance(width, height, PixelFormat.RGBA_8888, 2)
+        if (displayWidth == 0 || displayHeight == 0) {
+            val windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            val bounds = windowManager.maximumWindowMetrics.bounds
+            displayWidth = bounds.width()
+            displayHeight = bounds.height()
+        }
+        imageReader = ImageReader.newInstance(displayWidth, displayHeight, PixelFormat.RGBA_8888, 2)
         virtualDisplay?.surface = imageReader?.surface
         var captured = false
         val handler = Handler(Looper.getMainLooper())
@@ -157,31 +153,50 @@ class ScreenshotServiceRework : Service () {
                     return@setOnImageAvailableListener
                 }
 
-                val bitmap = excludeWindowInsets(image.toBitmap())
-//                val bitmap = image.toBitmap()/
+                // Keep the full display frame (no inset cropping). The bitmap is
+                // a 1:1 mirror of the display, so the edge-to-edge overlay can
+                // draw it without inset compensation. Cropping here while the
+                // UI re-applied safeDrawing insets double-subtracted them
+                // inconsistently across devices.
+                val bitmap = image.toBitmap()
                 image.close()
-                onScreenshotTaken?.invoke(bitmap)
+                val displayManager = getSystemService(DISPLAY_SERVICE) as DisplayManager
+                val rotation = displayManager.getDisplay(Display.DEFAULT_DISPLAY).rotation
+                ScreenshotStore.updateScreenshot(
+                    bitmap,
+                    Rect(0, 0, bitmap.width, bitmap.height),
+                    rotation
+                )
 
             } catch (e: Throwable) {
                 logger.ERROR(e.message!!)
             } finally {
                 imageReader?.close()
                 virtualDisplay?.surface = null
-//                virtualDisplay?.release()
-//                mediaProjection?.stop()
             }
         }, handler)
 
     }
 
+    fun requestScreenshotPermission() {
+        val broadcast = Intent("REQUEST_SCREENSHOT_PERMISSION")
+        sendBroadcast(broadcast)
+    }
+
     fun requestCapture() {
         logger.DEBUG("Captured")
         logger.DEBUG("$rc - $dataIntent")
-        prepareScreenshot()
+        if ((rc != RESULT_OK) || (dataIntent == null)) {
+            requestScreenshotPermission()
+        } else {
+            prepareScreenshot()
+        }
     }
 
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
+        registerReceiver(shutdownReceiver, IntentFilter("SHUTDOWN_SERVICES"), RECEIVER_NOT_EXPORTED)
         val captureChannel = NotificationChannel(
             "ScreenshotRework",
             "Screen Capture",
@@ -191,7 +206,7 @@ class ScreenshotServiceRework : Service () {
         }
 
 //        Creating notification channel
-        val manager = getSystemService(NotificationManager::class.java)
+        val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(captureChannel)
         val notification = NotificationCompat.Builder(this, "ScreenshotRework")
             .setContentTitle("Kaitou")
@@ -202,8 +217,17 @@ class ScreenshotServiceRework : Service () {
     }
 
     override fun onDestroy() {
-        super.onDestroy()
+        imageReader?.close()
+        imageReader = null
+
+        virtualDisplay?.surface = null
         virtualDisplay?.release()
+        virtualDisplay = null
+
         mediaProjection?.stop()
+        mediaProjection = null
+
+        unregisterReceiver(shutdownReceiver)
+        super.onDestroy()
     }
 }

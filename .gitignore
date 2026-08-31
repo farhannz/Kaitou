@@ -3,7 +3,7 @@
 build/
 app/build
 app/.cxx
-
+*.so
 captures
 
 **/local.properties
@@ -23,6 +23,7 @@ captures
 .idea/androidTestResultsUserPreferences.xml
 .idea/inspectionProfiles
 .idea/vcs.xml
+.idea/
 
 # Ignore all auto-generated configs except for app.xml. It's needed as template for the build
 .idea/runConfigurations
@@ -38,6 +39,7 @@ gradle.xml
 # Do not commit plain-text signing info
 release/*.properties
 release/*.gpg
+keystore.properties
 
 # VS Code config
 org.eclipse.buildship.core.prefs
@@ -64,3 +66,8 @@ site
 /workspace.xml
 # Environment-dependent path to Maven home directory
 /mavenHomeManager.xml
+
+*.jks
+app/release/
+app/src/test/
+.kotlin/
