@@ -67,7 +67,12 @@ object OnnxEngineFactory {
         if (!outDir.exists()) outDir.mkdirs()
 
         val outFile = File(outDir, assetName)
-        if (!outFile.exists()) {
+        val assetSize = try {
+            context.assets.openFd(assetSubPath).use { it.length }
+        } catch (_: Exception) {
+            -1L
+        }
+        if (!outFile.exists() || (assetSize > 0 && outFile.length() != assetSize)) {
             context.assets.open(assetSubPath).use { input ->
                 FileOutputStream(outFile).use { output ->
                     input.copyTo(output)

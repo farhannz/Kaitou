@@ -39,7 +39,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.createBitmap
-import com.farhannz.kaitou.MainApplication
+import com.farhannz.kaitou.OcrEngineProvider
 import com.farhannz.kaitou.data.models.*
 import com.farhannz.kaitou.domain.OcrResult
 import com.farhannz.kaitou.helpers.Logger
@@ -202,7 +202,6 @@ fun WordPolygonsOverlay(
         }.map { it.measure(constraints) }
 
         val overlayPlaceable = subcompose("Overlay") {
-            val context = LocalContext.current
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -260,8 +259,7 @@ fun WordPolygonsOverlay(
                                 merged = null
                                 popupViewModel.clearStates()
                                 withContext(Dispatchers.Default) {
-                                    val engine =
-                                        (context.applicationContext as MainApplication).textRecognizer
+                                    val engine = OcrEngineProvider.awaitReady().textRecognizer
                                     val raw = originalImage.toRawImage()
                                     val domainBoxes = grouped.detections.boxes.map { box ->
                                         box.map {
@@ -317,7 +315,7 @@ fun WordPolygonsOverlay(
 fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
     var ocrState by remember { mutableStateOf<OCRUIState>(OCRUIState.ProcessingOCR) }
     val groupedResult = remember { mutableListOf<GroupedResult>() }
-    val context = LocalContext.current
+    val engineState by OcrEngineProvider.state.collectAsState()
     when (ocrState) {
         is OCRUIState.ProcessingOCR -> {
             Box(
@@ -329,7 +327,7 @@ fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
             ) {
                 LaunchedEffect(ocrState) {
                     withContext(Dispatchers.Default) {
-                        val engine = (context.applicationContext as MainApplication).detectionEngine
+                        val engine = OcrEngineProvider.awaitReady().detectionEngine
                         val dets = engine.infer(inputImage.toRawImage())
                         when (dets) {
                             is OcrResult.Detection -> {
@@ -349,7 +347,19 @@ fun OCRScreen(onClicked: () -> Unit, inputImage: Bitmap) {
                         }
                     }
                 }
-                CircularProgressIndicator()
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator()
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        text = if (engineState is OcrEngineProvider.EngineState.Ready) {
+                            "Scanning for text…"
+                        } else {
+                            "Warming up OCR engine…"
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = Color.White
+                    )
+                }
             }
         }
 

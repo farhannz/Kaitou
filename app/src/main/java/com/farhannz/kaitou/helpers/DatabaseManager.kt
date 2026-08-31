@@ -12,7 +12,9 @@ import kotlinx.coroutines.launch
 object DatabaseManager {
     private lateinit var database: JmdictDatabase
     private var wordsCache: Set<String>? = null
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    // Default, not Main: initializeWordsCache converts the full dictionary
+    // word list to a HashSet — heavy enough to jank the UI thread on completion.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     fun initialize(context: Context) {
         database = JmdictDatabase.getDatabase(context)
         scope.launch {
